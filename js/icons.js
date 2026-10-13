@@ -12,6 +12,7 @@ const PATHS = {
   settings: '<path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>',
   back: '<path d="M15 5l-7 7 7 7"/>',
   alert: '<path d="M12 3 2.5 20h19Z"/><path d="M12 10v5M12 17.5v.5"/>',
+  help: '<circle cx="12" cy="12" r="9"/><path d="M9.6 9.4a2.5 2.5 0 1 1 3.6 2.2c-.8.4-1.2.9-1.2 1.8M12 17v.5"/>',
   check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
 };
 

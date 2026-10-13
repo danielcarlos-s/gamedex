@@ -2,7 +2,7 @@ import { t, formatDate } from '../i18n/index.js';
 import { icon } from '../icons.js';
 import { db } from '../data-source.js';
 import { downloadBackup, fsAccessSupported, getLinkStatus, linkFile, unlinkFile, reconnect, onAutoSave } from '../data/backup.js';
-import { WORKER_URL } from '../config.js';
+import { openHelp } from './help-modal.js';
 import { esc } from './grid.js';
 import { mountBackupImport } from './backup-flow.js';
 
@@ -74,7 +74,8 @@ export function mountSettings(root) {
           <h2 class="t-section">${esc(t('settings.worker.title'))}</h2>
           <p class="t-body measure">${esc(t('settings.worker.text'))}</p>
           <div class="field"><label class="field__label" for="s-worker">${esc(t('settings.worker.label'))}</label>
-            <input id="s-worker" class="input cut-a-6 is-chamfered" type="url" inputmode="url" autocomplete="off" value="${esc(workerUrl)}" placeholder="${esc(WORKER_URL)}"
+            <button type="button" class="btn btn--ghost cut-a-6 is-chamfered help-btn" data-help="worker">${icon('help')}<span>${esc(t('help.open.worker'))}</span></button>
+            <input id="s-worker" class="input cut-a-6 is-chamfered" type="url" inputmode="url" autocomplete="off" value="${esc(workerUrl)}" placeholder="${esc(t('settings.worker.placeholder'))}"
               ${msg.workerUrl?.error ? 'aria-invalid="true" aria-describedby="s-worker-msg"' : ''}></div>
           <div id="s-worker-msg">${note(msg.workerUrl)}</div>
           <div class="row">
@@ -87,8 +88,10 @@ export function mountSettings(root) {
           <h2 class="t-section">${esc(t('settings.steam.title'))}</h2>
           <p class="t-body measure">${esc(t('settings.steam.text'))}</p>
           <div class="field"><label class="field__label" for="s-steamid">${esc(t('settings.steam.id'))}</label>
+            <button type="button" class="btn btn--ghost cut-a-6 is-chamfered help-btn" data-help="steamid">${icon('help')}<span>${esc(t('help.open.steamid'))}</span></button>
             <input id="s-steamid" class="input cut-a-6 is-chamfered" type="text" inputmode="numeric" autocomplete="off" maxlength="17" value="${esc(steamId)}"></div>
           <div class="field"><label class="field__label" for="s-steamkey">${esc(t('settings.steam.key'))}</label>
+            <button type="button" class="btn btn--ghost cut-a-6 is-chamfered help-btn" data-help="apikey">${icon('help')}<span>${esc(t('help.open.apikey'))}</span></button>
             <input id="s-steamkey" class="input cut-a-6 is-chamfered" type="password" autocomplete="off" spellcheck="false" maxlength="32"
               placeholder="${esc(hasKey ? t('settings.steam.keyset') : '')}"></div>
           <p class="t-label">${esc(t('settings.steam.hint'))}</p>
@@ -162,6 +165,8 @@ export function mountSettings(root) {
   });
 
   root.addEventListener('click', (e) => {
+    const h = e.target.closest('[data-help]');
+    if (h) { openHelp(h.dataset.help, h); return; }
     const b = e.target.closest('[data-act]');
     if (!b) return;
     const a = b.dataset.act;
