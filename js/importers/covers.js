@@ -54,9 +54,10 @@ const NOISE = new Set(['dlc', 'pack', 'packs', 'season', 'pass', 'soundtrack', '
 const MAX_ITEMS = 5;
 
 /**
- * Deixa o jogo principal no topo e esconde DLC/pacotes. Ordem: nome igual ao buscado → sem palavra de ruído → ruído.
- * Uma palavra de ruído só conta se NÃO estiver no título buscado (quem busca "Mad Max Season Pass" a quer).
- * O ruído só é descartado se sobrar ao menos um resultado limpo; senão tudo é mantido, na ordem original.
+ * Deixa o jogo principal no topo e esconde DLC/pacotes. Ordem: nome igual ao buscado → começa com o buscado (o mais
+ * curto primeiro, que é o mais próximo do título: "Jogo — Remastered" antes de "Jogo — Trilha extra") → outros sem
+ * palavra de ruído → ruído. Uma palavra de ruído só conta se NÃO estiver no título buscado (quem busca
+ * "Mad Max Season Pass" a quer). O ruído só é descartado se sobrar ao menos um resultado limpo; senão tudo é mantido.
  * @param {string} title título buscado
  * @param {CoverItem[]} items
  * @returns {CoverItem[]} até 5 itens
@@ -66,9 +67,15 @@ export function refineCoverItems(title, items) {
   const words = (/** @type {string} */ s) => normalizeTitle(s).split(' ').filter(Boolean);
   const wanted = new Set(words(title));
   const noisy = (/** @type {CoverItem} */ i) => words(i.name).some((w) => NOISE.has(w) && !wanted.has(w));
-  const rank = (/** @type {CoverItem} */ i) => (normalizeTitle(i.name) === key ? 0 : noisy(i) ? 2 : 1);
-  const ordered = items.map((item, idx) => ({ item, idx, r: rank(item) })).sort((a, b) => a.r - b.r || a.idx - b.idx);
-  const clean = ordered.filter((o) => o.r < 2);
+  const rank = (/** @type {CoverItem} */ i) => {
+    const k = normalizeTitle(i.name);
+    if (k === key) return 0;
+    if (noisy(i)) return 3;
+    return key && (k.startsWith(key + ' ')) ? 1 : 2;
+  };
+  const ordered = items.map((item, idx) => ({ item, idx, r: rank(item), len: normalizeTitle(item.name).length }))
+    .sort((a, b) => a.r - b.r || (a.r === 1 ? a.len - b.len : 0) || a.idx - b.idx);
+  const clean = ordered.filter((o) => o.r < 3);
   return (clean.length ? clean : ordered).slice(0, MAX_ITEMS).map((o) => o.item);
 }
 

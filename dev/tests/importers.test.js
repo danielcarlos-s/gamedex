@@ -337,7 +337,7 @@ test('covers: refineCoverItems põe o jogo principal no topo e esconde DLC/pacot
   // palavra de ruído presente no título buscado não conta como ruído
   assert.deepEqual(refineCoverItems('Mad Max Season Pass', [it(9, 'Mad Max'), it(10, 'Mad Max Season Pass')]).map((i) => i.appid), [10, 9]);
   // sem falso positivo em palavra parecida (kitchen, passage); limite de 5
-  assert.deepEqual(refineCoverItems('Cook', [it(11, 'Kitchen Simulator'), it(12, 'Cook Passage')]).map((i) => i.appid), [11, 12]);
+  assert.deepEqual(refineCoverItems('Cook', [it(11, 'Kitchen Simulator'), it(12, 'Cook Passage')]).map((i) => i.appid), [12, 11]);
   assert.equal(refineCoverItems('Jogo', Array.from({ length: 9 }, (_, n) => it(n, 'Jogo ' + n))).length, 5);
 });
 test('covers: searchCover aplica o filtro (principal vence os pacotes)', async () => {
