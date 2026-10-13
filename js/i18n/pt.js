@@ -125,6 +125,8 @@ export const pt = {
   'game.cover.searching': 'Buscando capas',
   'game.cover.results': 'Escolha a capa',
   'game.cover.none': 'Nenhuma capa encontrada.',
+  'game.cover.saved': 'Capa salva.',
+  'game.cover.pending': 'Capa escolhida. Ela será gravada quando você salvar o jogo.',
   'game.cover.term': 'Nome para buscar',
   'game.cover.go': 'Buscar',
   'game.cover.hint': 'Não achou? Digite o nome exatamente como aparece na loja da Steam e busque de novo. O nome do jogo aqui não muda.',

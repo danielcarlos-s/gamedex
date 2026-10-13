@@ -125,6 +125,8 @@ export const en = {
   'game.cover.searching': 'Searching covers',
   'game.cover.results': 'Pick a cover',
   'game.cover.none': 'No cover found.',
+  'game.cover.saved': 'Cover saved.',
+  'game.cover.pending': 'Cover chosen. It will be stored when you save the game.',
   'game.cover.term': 'Name to search',
   'game.cover.go': 'Search',
   'game.cover.hint': 'Not found? Type the name exactly as it appears in the Steam store and search again. The game name here does not change.',

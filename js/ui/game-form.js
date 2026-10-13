@@ -257,6 +257,24 @@ export async function mountGameForm(root, id) {
     return true;
   }
 
+  /**
+   * Grava SÓ a capa de um jogo já cadastrado (o resto do formulário segue exigindo Salvar). Jogo novo ainda não existe
+   * no banco: a capa fica no rascunho e vai junto com o primeiro Salvar. Define `message` (aviso na tela).
+   * @returns {Promise<void>}
+   */
+  async function persistCover() {
+    if (isNew) { message = t('game.cover.pending'); return; }
+    try {
+      const stored = await db.getGame(draft.id);
+      if (!stored) throw { code: 'not_found' };
+      Object.assign(stored, { coverUrl: draft.coverUrl, coverAppId: draft.coverAppId, coverManual: draft.coverManual, updatedAt: new Date().toISOString() });
+      await db.putGame(stored);
+      message = t('game.cover.saved');
+    } catch (e) {
+      message = t('err.' + (e?.code || 'idb_unavailable'));
+    }
+  }
+
   async function workerUrl() {
     let url = '';
     try { url = (await db.getMeta('workerUrl')) || ''; } catch { /* usa o padrão */ }
@@ -313,22 +331,30 @@ export async function mountGameForm(root, id) {
     },
     'cover-search': () => searchCovers(false),
     'cover-research': () => searchCovers(true),
-    'cover-pick': (b) => {
+    'cover-pick': async (b) => {
       sync();
       const it = cover.items[Number(b.dataset.i)];
       Object.assign(draft, { coverUrl: it.coverUrl, coverAppId: it.appid ?? null, coverManual: true });
       cover = { open: false, loading: false, items: null, error: null, term: '' };
-      render('[data-action="cover-search"]');
+      await persistCover();
+      if (!disposed) render('[data-action="cover-search"]');
     },
-    'cover-apply': () => {
+    'cover-apply': async () => {
       sync();
-      const v = $('#g-coverurl').value.trim();
+      let v = $('#g-coverurl').value.trim();
       delete errors.coverUrl;
-      if (!isHttpUrl(v)) { errors.coverUrl = 'invalid_url'; render('#g-coverurl'); $('#g-coverurl').value = v; return; }
+      if (v && !/^[a-z][a-z0-9+.-]*:/i.test(v) && /^[^\s/]+\.[^\s/]+\S*$/.test(v)) v = 'https://' + v; // colou sem "https://" (domínio.ext/...): completa
+      if (/\s/.test(v) || !isHttpUrl(v)) { errors.coverUrl = 'invalid_url'; render('#g-coverurl'); $('#g-coverurl').value = v; return; }
       Object.assign(draft, { coverUrl: v, coverAppId: null, coverManual: true });
-      render('[data-action="cover-search"]');
+      await persistCover();
+      if (!disposed) render('[data-action="cover-search"]');
     },
-    'cover-remove': () => { sync(); Object.assign(draft, { coverUrl: null, coverAppId: null, coverManual: true }); render('[data-action="cover-search"]'); },
+    'cover-remove': async () => {
+      sync();
+      Object.assign(draft, { coverUrl: null, coverAppId: null, coverManual: true });
+      await persistCover();
+      if (!disposed) render('[data-action="cover-search"]');
+    },
     delete: () => { sync(); confirmDelete = true; render('#del-cancel'); },
     'delete-cancel': () => { confirmDelete = false; render('[data-action="delete"]'); },
     'delete-confirm': async () => {
