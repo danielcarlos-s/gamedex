@@ -49,8 +49,32 @@ const MAX_CONSECUTIVE_FAILURES = 3;
 const SAVE_EVERY = 20;
 const MAX_TERM = 100;
 
+/** Palavras que marcam DLC/pacote/extra (a busca da Steam não diferencia DLC do jogo: tudo vem como `app`). */
+const NOISE = new Set(['dlc', 'pack', 'packs', 'season', 'pass', 'soundtrack', 'ost', 'artbook', 'bundle', 'upgrade', 'kit', 'skin', 'skins', 'cosmetic', 'cosmetics', 'demo', 'playtest', 'beta']);
+const MAX_ITEMS = 5;
+
 /**
- * Busca capas candidatas para um título (`GET {workerUrl}/steam/search?term=`). Até 5 itens.
+ * Deixa o jogo principal no topo e esconde DLC/pacotes. Ordem: nome igual ao buscado → sem palavra de ruído → ruído.
+ * Uma palavra de ruído só conta se NÃO estiver no título buscado (quem busca "Mad Max Season Pass" a quer).
+ * O ruído só é descartado se sobrar ao menos um resultado limpo; senão tudo é mantido, na ordem original.
+ * @param {string} title título buscado
+ * @param {CoverItem[]} items
+ * @returns {CoverItem[]} até 5 itens
+ */
+export function refineCoverItems(title, items) {
+  const key = normalizeTitle(title);
+  const words = (/** @type {string} */ s) => normalizeTitle(s).split(' ').filter(Boolean);
+  const wanted = new Set(words(title));
+  const noisy = (/** @type {CoverItem} */ i) => words(i.name).some((w) => NOISE.has(w) && !wanted.has(w));
+  const rank = (/** @type {CoverItem} */ i) => (normalizeTitle(i.name) === key ? 0 : noisy(i) ? 2 : 1);
+  const ordered = items.map((item, idx) => ({ item, idx, r: rank(item) })).sort((a, b) => a.r - b.r || a.idx - b.idx);
+  const clean = ordered.filter((o) => o.r < 2);
+  return (clean.length ? clean : ordered).slice(0, MAX_ITEMS).map((o) => o.item);
+}
+
+/**
+ * Busca capas candidatas para um título (`GET {workerUrl}/steam/search?term=`). Até 5 itens, já sem DLC/pacotes
+ * quando houver o jogo principal (`refineCoverItems`).
  * Lança `{ code }`: o código do Worker, `network`, `bad_request` (URL inválida ou termo vazio),
  * `steam_upstream` para resposta ilegível.
  * @param {string} title
@@ -74,7 +98,7 @@ export async function searchCover(title, workerUrl, signal) {
   try { body = await res.json(); } catch { /* tratado abaixo */ }
   if (!res.ok) throw { code: typeof body?.error === 'string' ? body.error : 'steam_upstream' };
   if (!body || !Array.isArray(body.items)) throw { code: 'steam_upstream' };
-  return body.items.map((/** @type {any} */ i) => ({ appid: i.appid, name: String(i.name ?? ''), coverUrl: i.coverUrl ?? steamCoverUrl(i.appid) }));
+  return refineCoverItems(term, body.items.map((/** @type {any} */ i) => ({ appid: i.appid, name: String(i.name ?? ''), coverUrl: i.coverUrl ?? steamCoverUrl(i.appid) })));
 }
 
 /**

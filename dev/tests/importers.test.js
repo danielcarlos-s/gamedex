@@ -3,7 +3,7 @@
 import { test, assert } from '../test-lib.js';
 import { parseCsv, templateCsv, serializeCsv, CSV_COLUMNS } from '../../js/importers/csv.js';
 import { parseSteamCache, fetchOwned } from '../../js/importers/steam.js';
-import { searchCover, queueCovers } from '../../js/importers/covers.js';
+import { searchCover, queueCovers, refineCoverItems } from '../../js/importers/covers.js';
 import { planMerge, createGame } from '../../js/data/model.js';
 
 /** @type {string[]} */
@@ -190,7 +190,7 @@ test('covers: título igual aceita sozinho; diferente chama onAmbiguous; coverMa
   const calls = await withFetch((u) => {
     const term = new URL(u).searchParams.get('term');
     if (term === 'The Witcher 3: Wild Hunt') return jsonRes({ items: [item(292030, 'The Witcher 3: Wild Hunt - Game of the Year Edition')] });
-    return jsonRes({ items: [item(1145350, 'Hades II'), item(1145360, 'Hades')] });
+    return jsonRes({ items: [item(1145350, 'Hades II'), item(1145360, 'Hades Reloaded')] });
   }, async () => {
     const res = await queueCovers([exact, fuzzy, manual, skipped], {
       workerUrl: 'https://w.test', delayMs: 0, save: async (g) => { saved.push(...g); },
@@ -326,4 +326,24 @@ test('steam: fetchOwned envia as credenciais do usuário só em cabeçalhos', as
     await fetchOwned('https://w.test');
     assert.ok(!('X-Steam-Key' in seen.init.headers));
   } finally { globalThis.fetch = real; }
+});
+
+test('covers: refineCoverItems põe o jogo principal no topo e esconde DLC/pacotes', () => {
+  const it = (appid, name) => ({ appid, name, coverUrl: 'x' + appid });
+  const bf = [it(2, 'Season 5 Battlefield Pro - Battlefield™ 6 and REDSEC'), it(3, 'Lead the Way Pack - Battlefield™ 6'), it(1, 'Battlefield™ 6'), it(4, 'Battlefield 6 Soundtrack'), it(5, 'Battlefield V')];
+  assert.deepEqual(refineCoverItems('Battlefield 6', bf).map((i) => i.appid), [1, 5]);
+  // só ruído: mantém tudo, na ordem original (não deixa a lista vazia)
+  assert.deepEqual(refineCoverItems('Algo', [it(7, 'Algo Pack'), it(8, 'Algo Skins')]).map((i) => i.appid), [7, 8]);
+  // palavra de ruído presente no título buscado não conta como ruído
+  assert.deepEqual(refineCoverItems('Mad Max Season Pass', [it(9, 'Mad Max'), it(10, 'Mad Max Season Pass')]).map((i) => i.appid), [10, 9]);
+  // sem falso positivo em palavra parecida (kitchen, passage); limite de 5
+  assert.deepEqual(refineCoverItems('Cook', [it(11, 'Kitchen Simulator'), it(12, 'Cook Passage')]).map((i) => i.appid), [11, 12]);
+  assert.equal(refineCoverItems('Jogo', Array.from({ length: 9 }, (_, n) => it(n, 'Jogo ' + n))).length, 5);
+});
+test('covers: searchCover aplica o filtro (principal vence os pacotes)', async () => {
+  const items = [{ appid: 2, name: 'Season 5 Pro - Battlefield 6', coverUrl: 'b' }, { appid: 1, name: 'Battlefield 6', coverUrl: 'a' }];
+  await withFetch(() => jsonRes({ items }), async () => {
+    const r = await searchCover('Battlefield 6', 'https://w.test');
+    assert.deepEqual(r.map((i) => i.appid), [1]);
+  });
 });

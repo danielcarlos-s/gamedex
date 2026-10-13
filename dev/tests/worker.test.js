@@ -104,14 +104,14 @@ test('worker: sem secrets → 500 misconfigured', async () => {
   assert.equal(r.status, 500);
   assert.deepEqual(await r.json(), { error: 'misconfigured' });
 });
-test('worker: /steam/search → 200 com até 5 itens no formato do contrato', async () => {
-  const items = Array.from({ length: 8 }, (_, i) => ({ type: 'app', id: 292030 + i, name: `Jogo ${i}`, tiny_image: 'x' }));
-  const calls = await withFetch(() => jsonRes({ total: 8, items }), async () => {
+test('worker: /steam/search → 200 com até 10 itens no formato do contrato', async () => {
+  const items = Array.from({ length: 12 }, (_, i) => ({ type: 'app', id: 292030 + i, name: `Jogo ${i}`, tiny_image: 'x' }));
+  const calls = await withFetch(() => jsonRes({ total: 12, items }), async () => {
     const r = await handle(req('/steam/search?term=' + encodeURIComponent('The Witcher 3')), env);
     assert.equal(r.status, 200);
     assert.equal(r.headers.get('Access-Control-Allow-Origin'), OK);
     const b = await r.json();
-    assert.equal(b.items.length, 5);
+    assert.equal(b.items.length, 10);
     assert.deepEqual(b.items[0], { appid: 292030, name: 'Jogo 0', coverUrl: 'https://cdn.cloudflare.steamstatic.com/steam/apps/292030/library_600x900_2x.jpg' });
   });
   assert.ok(calls[0].startsWith('https://store.steampowered.com/api/storesearch/?'));

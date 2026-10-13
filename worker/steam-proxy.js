@@ -18,7 +18,7 @@
 const OWNED_TTL = 10 * 60; // 10 min
 const SEARCH_TTL = 7 * 24 * 60 * 60; // 7 dias
 const MAX_TERM = 100;
-const MAX_ITEMS = 5;
+const MAX_ITEMS = 10; // o app filtra DLC/pacotes e fica com até 5
 const KEY_RE = /^[0-9A-Fa-f]{32}$/;
 const ID_RE = /^\d{17}$/;
 const COVER = (/** @type {number} */ appid) => `https://cdn.cloudflare.steamstatic.com/steam/apps/${appid}/library_600x900_2x.jpg`;
