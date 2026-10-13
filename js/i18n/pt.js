@@ -37,6 +37,7 @@ export const pt = {
   'filters.played': 'Jogados',
   'filters.unplayed': 'Não jogados',
   'filters.more': 'Gêneros e tags',
+  'filters.advanced': 'Filtros',
   'filters.genres': 'Gêneros',
   'filters.tags': 'Tags',
   'filters.clear': 'Limpar filtros',

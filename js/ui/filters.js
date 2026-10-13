@@ -125,7 +125,7 @@ export function buildPanel(root, games, state, onChange) {
   const present = (list_, key, fn) => list_.filter((x) => games.some((g) => fn(g, x)));
   const stores = present(STORE_ORDER, 'stores', (g, s) => gameStores(g).includes(s));
 
-  const moreOpen = !!(state.tags.size || state.genres.size);
+  const moreOpen = false; // sempre fechado ao carregar; o contador do botão mostra se há filtros ativos
   root.innerHTML = `
     <div class="filters">
       <div class="filters__top">
@@ -144,6 +144,12 @@ export function buildPanel(root, games, state, onChange) {
           </div>
         </div>
       </div>
+      <div class="fgroup">
+        <button class="btn cut-a-8 is-chamfered" type="button" data-role="adv" aria-expanded="false" aria-controls="f-adv">
+          <span>${esc(t('filters.advanced'))}</span><span class="chip-btn__count" data-role="adv-count" hidden></span>${icon('chevron', { className: 'more-icon' })}
+        </button>
+      </div>
+      <div id="f-adv" class="stack" hidden>
       ${group('filters.stores', stores.map((s) => chipBtn('data-store', s, t('store.' + s))).join(''))}
       ${group('filters.status', STATUS_ORDER.map((s) => chipBtn('data-status', s, t('status.' + s))).join(''))}
       <div class="fgroup">
@@ -165,6 +171,7 @@ export function buildPanel(root, games, state, onChange) {
           ${tags.length ? group('filters.tags', tags.map((x) => chipBtn('data-tag', x, x)).join('')) : ''}
         </div>
       </div>` : ''}
+      </div>
       <div class="row filters__foot">
         <p class="t-data" data-role="results" aria-live="polite"></p>
         <button class="btn cut-a-8 is-chamfered" type="button" data-role="clear">${esc(t('filters.clear'))}</button>
@@ -176,6 +183,7 @@ export function buildPanel(root, games, state, onChange) {
   const sortEl = $('#f-sort');
   const dirBtn = $('[data-role="dir"]');
   const more = $('[data-role="more"]');
+  const adv = $('[data-role="adv"]');
 
   let timer;
   q.addEventListener('input', () => {
@@ -188,6 +196,11 @@ export function buildPanel(root, games, state, onChange) {
     onChange(state);
   });
   dirBtn.addEventListener('click', () => { state.dir = state.dir === 'asc' ? 'desc' : 'asc'; onChange(state); });
+  adv.addEventListener('click', () => {
+    const open = adv.getAttribute('aria-expanded') !== 'true';
+    adv.setAttribute('aria-expanded', String(open));
+    $('#f-adv').hidden = !open;
+  });
   more?.addEventListener('click', () => {
     const open = more.getAttribute('aria-expanded') !== 'true';
     more.setAttribute('aria-expanded', String(open));
@@ -236,6 +249,10 @@ export function buildPanel(root, games, state, onChange) {
     setChip('[data-flag="multi"]', s.multi, counts.multi);
     setChip('[data-played="yes"]', s.played === 'yes', counts.played.yes);
     setChip('[data-played="no"]', s.played === 'no', counts.played.no);
+    const active = s.stores.size + s.status.size + s.tags.size + s.genres.size + (s.fav ? 1 : 0) + (s.multi ? 1 : 0) + (s.played ? 1 : 0);
+    const badge = $('[data-role="adv-count"]');
+    badge.hidden = active === 0;
+    badge.textContent = formatNumber(active);
     $('[data-role="results"]').textContent = t('library.results', { n: formatNumber(shown), total: formatNumber(total) });
     $('[data-role="clear"]').hidden = !hasActiveFilters(s);
   };

@@ -37,6 +37,7 @@ export const en = {
   'filters.played': 'Played',
   'filters.unplayed': 'Not played',
   'filters.more': 'Genres and tags',
+  'filters.advanced': 'Filters',
   'filters.genres': 'Genres',
   'filters.tags': 'Tags',
   'filters.clear': 'Clear filters',

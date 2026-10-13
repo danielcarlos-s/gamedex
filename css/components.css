@@ -190,7 +190,9 @@ select.input { width: auto; min-width: 160px; }
 .dir-icon { transition: transform var(--dur) var(--ease); }
 .is-asc .dir-icon { transform: rotate(180deg); }
 .more-icon { transition: transform var(--dur) var(--ease); }
-[data-role="more"][aria-expanded="true"] .more-icon { transform: rotate(180deg); }
+[data-role="more"][aria-expanded="true"] .more-icon, [data-role="adv"][aria-expanded="true"] .more-icon { transform: rotate(180deg); }
+[data-role="adv"] { justify-self: start; }
+[data-role="adv-count"] { color: var(--accent-text); font-weight: 700; }
 @media (max-width: 600px) { .filters__top { grid-template-columns: minmax(0, 1fr); } select.input { flex: 1; } }
 
 /* ---- Detalhe / formulário ---- */
