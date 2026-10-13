@@ -51,7 +51,7 @@ A Steam Web API não tem CORS e a chave não pode ficar no site público. Por is
 
 **Chave no backup (opcional):** ao exportar, marque "Incluir minha chave Steam, protegida por senha". A chave é cifrada no navegador (AES-256-GCM, chave derivada da sua senha por PBKDF2) e só abre com essa senha; ao importar o backup o app pede a senha para restaurá-la (sem senha, importa tudo menos a chave). O SteamID (público) sempre vai no backup. O arquivo vinculado (salvamento automático) nunca leva a chave.
 
-Capas de jogos de qualquer loja são buscadas pela busca pública da Steam (rota `/steam/search` do Worker); quando o resultado for duvidoso você escolhe, e há a opção de colar a URL da capa.
+Capas de jogos de qualquer loja são buscadas pela busca pública da Steam (rota `/steam/search` do Worker); quando o resultado for duvidoso você escolhe, e há a opção de colar a URL da capa. Se a busca não achar, o painel de capa tem o campo **Nome para buscar**: digite o nome como aparece na loja da Steam e clique em Buscar (ou Enter); o nome do jogo no app não muda.
 
 ## Publicar no GitHub Pages
 

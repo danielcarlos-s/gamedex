@@ -33,7 +33,7 @@ export async function mountGameForm(root, id) {
   let errors = {};
   let message = '';
   let confirmDelete = false;
-  let cover = { open: false, loading: false, items: null, error: null };
+  let cover = { open: false, loading: false, items: null, error: null, term: '' };
 
   root.innerHTML = `<div class="state panel panel--live" role="status"><div class="loader"></div><span class="t-label">${esc(t('state.loading'))}</span></div>`;
   try {
@@ -119,7 +119,11 @@ export async function mountGameForm(root, id) {
       : `<div class="cover-ph">${esc(draft.title || t('game.new'))}</div>`;
     let panel = '';
     if (cover.open) {
-      panel = `<div class="cover-results" role="group" aria-label="${esc(t('game.cover.results'))}">`;
+      panel = `<div class="cover-results" role="group" aria-label="${esc(t('game.cover.results'))}">
+        <div class="field"><label class="field__label" for="g-coverterm">${esc(t('game.cover.term'))}</label>
+          <div class="row"><input id="g-coverterm" class="input cut-a-6 is-chamfered" type="search" autocomplete="off" maxlength="100" value="${esc(cover.term)}">
+            <button type="button" class="btn cut-a-8 is-chamfered" data-action="cover-research">${icon('search')}<span>${esc(t('game.cover.go'))}</span></button></div>
+          <p class="t-hint">${esc(t('game.cover.hint'))}</p></div>`;
       if (cover.loading) panel += `<div class="loader"></div><p class="t-label" role="status">${esc(t('game.cover.searching'))}</p>`;
       else if (cover.error) panel += `<p class="field__error" role="alert">${esc(t('err.' + cover.error))}</p>`;
       else if (!cover.items.length) panel += `<p class="t-body" role="status">${esc(t('game.cover.none'))}</p>`;
@@ -259,19 +263,25 @@ export async function mountGameForm(root, id) {
     return url || WORKER_URL;
   }
 
-  async function searchCovers() {
+  /**
+   * Busca capas. A primeira busca usa o título do jogo; depois, o termo digitado no painel (o título do jogo não muda).
+   * @param {boolean} [retry] true quando vem do botão Buscar do painel (usa o termo digitado)
+   */
+  async function searchCovers(retry = false) {
     sync();
-    cover = { open: true, loading: true, items: null, error: null };
-    render('[data-action="cover-search"]');
+    const typed = retry === true ? ($('#g-coverterm')?.value ?? '').trim() : '';
+    const term = typed || (retry === true ? cover.term : '') || draft.title;
+    cover = { open: true, loading: true, items: null, error: null, term };
+    render();
     try {
       const url = await workerUrl();
       if (!url) throw { code: 'misconfigured' };
-      cover.items = await searchCover(draft.title, url);
+      cover.items = await searchCover(term, url);
     } catch (e) {
       cover.error = e?.code || 'network';
     }
     cover.loading = false;
-    if (!disposed) render('[data-action="cover-search"]');
+    if (!disposed) render(retry === true ? '#g-coverterm' : '[data-action="cover-search"]');
   }
 
   const actions = {
@@ -301,12 +311,13 @@ export async function mountGameForm(root, id) {
         render();
       }
     },
-    'cover-search': searchCovers,
+    'cover-search': () => searchCovers(false),
+    'cover-research': () => searchCovers(true),
     'cover-pick': (b) => {
       sync();
       const it = cover.items[Number(b.dataset.i)];
       Object.assign(draft, { coverUrl: it.coverUrl, coverAppId: it.appid ?? null, coverManual: true });
-      cover = { open: false, loading: false, items: null, error: null };
+      cover = { open: false, loading: false, items: null, error: null, term: '' };
       render('[data-action="cover-search"]');
     },
     'cover-apply': () => {
@@ -336,6 +347,7 @@ export async function mountGameForm(root, id) {
   root.addEventListener('submit', (e) => { e.preventDefault(); save(); });
   // radiogroup da nota: setas movem e escolhem; Home/End vão aos extremos
   root.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && e.target.id === 'g-coverterm') { e.preventDefault(); searchCovers(true); return; }
     const star = e.target.closest?.('.rating__star');
     if (!star) return;
     const cur = Number(star.dataset.value);
