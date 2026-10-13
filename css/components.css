@@ -274,6 +274,7 @@ dialog.help::backdrop { background-color: var(--overlay); }
 .theme-switching, .theme-switching *, .theme-switching *::before, .theme-switching *::after { transition: none !important; }
 .seg-toggle { display: inline-flex; }
 .seg-toggle .icon { width: 20px; height: 20px; }
+.seg-toggle button { display: inline-flex; align-items: center; justify-content: center; }
 
 /* ---- Lojas criadas (Ajustes) ---- */
 .swatches { display: flex; flex-wrap: wrap; gap: var(--sp-3); }
