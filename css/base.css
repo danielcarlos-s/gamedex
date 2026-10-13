@@ -11,9 +11,9 @@ html {
 body {
   min-height: 100vh;
   font-family: var(--font-body);
-  font-weight: 300;
-  font-size: 13px;
-  line-height: 1.65;
+  font-weight: 400;
+  font-size: 16px;
+  line-height: 1.6;
   background-color: var(--bg);
 }
 
@@ -52,14 +52,16 @@ ul, ol { padding: 0; list-style: none; }
 }
 .t-label {
   font-family: var(--font-display); font-weight: 600; text-transform: uppercase;
-  font-size: 10px; letter-spacing: 0.14em; color: var(--accent-text);
+  font-size: 12px; letter-spacing: 0.12em; color: var(--accent-text);
 }
 .t-section {
   font-family: var(--font-display); font-weight: 700; text-transform: uppercase;
-  font-size: 11px; letter-spacing: 0.18em; color: var(--accent-text);
+  font-size: 14px; letter-spacing: 0.12em; color: var(--accent-text);
 }
-.t-body { font-size: 13px; font-weight: 300; line-height: 1.65; color: var(--text-secondary); }
-.t-data { font-size: 13px; font-weight: 500; color: var(--text-primary); }
+.t-body { font-size: 16px; font-weight: 400; line-height: 1.6; color: var(--text-secondary); }
+.t-data { font-size: 16px; font-weight: 500; color: var(--text-primary); }
+/* Dica / aviso / status: frase de verdade, em corpo normal (nunca caixa-alta de 10px). */
+.t-hint { font-size: 14px; font-weight: 400; line-height: 1.55; color: var(--text-secondary); }
 .measure { max-width: 600px; }
 
 /* Divisor de seção */

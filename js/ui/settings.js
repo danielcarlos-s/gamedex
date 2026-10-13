@@ -40,7 +40,7 @@ export function mountSettings(root) {
 
   const note = (m) => (!m ? '' : m.error
     ? `<p class="field__error" role="alert">${icon('alert')} ${esc(t('err.' + m.error))}</p>`
-    : `<p class="t-label" role="status">${esc(m.text)}</p>`);
+    : `<p class="t-hint" role="status">${esc(m.text)}</p>`);
 
   function backupAge() {
     if (!lastBackup) return gamesCount ? { stale: true, text: t('settings.backup.never') } : null;
@@ -51,7 +51,7 @@ export function mountSettings(root) {
   function linkHtml() {
     if (link === 'unsupported') return '';
     const status = t('settings.link.status.' + link);
-    const autoLine = auto ? (auto.ok ? `<p class="t-label" role="status">${esc(t('settings.link.saved', { time: formatDate(auto.at, { timeStyle: 'short' }) }))}</p>`
+    const autoLine = auto ? (auto.ok ? `<p class="t-hint" role="status">${esc(t('settings.link.saved', { time: formatDate(auto.at, { timeStyle: 'short' }) }))}</p>`
       : `<p class="field__error" role="alert">${icon('alert')} ${esc(t('err.' + auto.code))}</p>`) : '';
     return `<section class="panel stack">
       <h2 class="t-section">${esc(t('settings.link.title'))}</h2>
@@ -94,7 +94,7 @@ export function mountSettings(root) {
             <button type="button" class="btn btn--ghost cut-a-6 is-chamfered help-btn" data-help="apikey">${icon('help')}<span>${esc(t('help.open.apikey'))}</span></button>
             <input id="s-steamkey" class="input cut-a-6 is-chamfered" type="password" autocomplete="off" spellcheck="false" maxlength="32"
               placeholder="${esc(hasKey ? t('settings.steam.keyset') : '')}"></div>
-          <p class="t-label">${esc(t('settings.steam.hint'))}</p>
+          <p class="t-hint">${esc(t('settings.steam.hint'))}</p>
           <div id="s-steam-msg">${note(msg.steam)}</div>
           <div class="row">
             <button type="submit" class="btn btn--primary cut-a-8 is-chamfered">${esc(t('common.save'))}</button>

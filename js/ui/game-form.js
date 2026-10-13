@@ -183,7 +183,7 @@ export async function mountGameForm(root, id) {
         <a class="btn btn--ghost cut-a-8 is-chamfered" href="#/">${icon('back')}<span>${esc(t('common.back'))}</span></a>
       </div>
       <hr class="divider">
-      <div class="status-line" role="status" aria-live="polite">${hasErr ? `<p class="field__error">${esc(t('game.errors.summary'))}</p>` : message ? `<p class="t-label">${esc(message)}</p>` : ''}</div>
+      <div class="status-line" role="status" aria-live="polite">${hasErr ? `<p class="field__error">${esc(t('game.errors.summary'))}</p>` : message ? `<p class="t-hint">${esc(message)}</p>` : ''}</div>
       <form class="detail" novalidate>
         <div class="detail__side">${coverHtml()}</div>
         <div class="detail__main stack">

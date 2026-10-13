@@ -19,7 +19,7 @@
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-4);
   min-height: 44px; min-width: 44px; padding: 0 var(--sp-8);
-  font-family: var(--font-display); font-weight: 600; font-size: 14px;
+  font-family: var(--font-display); font-weight: 600; font-size: 15px;
   letter-spacing: 0.1em; text-transform: uppercase; line-height: 1;
   color: var(--text-primary);
   background-color: var(--surface-2);
@@ -44,7 +44,7 @@
 .nav-link {
   position: relative; display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-4);
   min-height: 44px; min-width: 44px; padding: 0 var(--sp-7);
-  font-family: var(--font-display); font-weight: 600; font-size: 14px;
+  font-family: var(--font-display); font-weight: 600; font-size: 15px;
   letter-spacing: 0.1em; text-transform: uppercase; line-height: 1;
   color: var(--text-secondary);
   transition: color var(--dur) var(--ease), background-color var(--dur) var(--ease);
@@ -55,7 +55,7 @@
   content: ""; position: absolute; left: var(--sp-7); right: var(--sp-7); bottom: 0; height: 2px; background: var(--accent);
 }
 @media (max-width: 600px) {
-  .nav-link { flex-direction: column; gap: var(--sp-2); min-height: 56px; font-size: 10px; letter-spacing: 0.14em; padding: 0 var(--sp-3); }
+  .nav-link { flex-direction: column; gap: var(--sp-2); min-height: 56px; font-size: 12px; letter-spacing: 0.1em; padding: 0 var(--sp-3); }
   .nav-link[aria-current="page"]::after { top: 0; bottom: auto; left: 0; right: 0; }
 }
 
@@ -74,8 +74,8 @@
 /* ---- Chip / selo ---- */
 .chip {
   display: inline-flex; align-items: center; gap: var(--sp-3);
-  height: 22px; padding: 0 var(--sp-4);
-  font-family: var(--font-display); font-weight: 700; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; line-height: 1;
+  height: 26px; padding: 0 var(--sp-5);
+  font-family: var(--font-display); font-weight: 700; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; line-height: 1;
   color: var(--text-secondary); background-color: transparent; border: 1px solid var(--border);
   white-space: nowrap;
 }
@@ -97,21 +97,21 @@
 .chip-btn {
   display: inline-flex; align-items: center; gap: var(--sp-4);
   min-height: 44px; padding: 0 var(--sp-7);
-  font-family: var(--font-display); font-weight: 700; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; line-height: 1;
+  font-family: var(--font-display); font-weight: 700; font-size: 13px; letter-spacing: 0.1em; text-transform: uppercase; line-height: 1;
   color: var(--text-secondary); background-color: transparent; border: 1px solid var(--border);
   transition: color var(--dur) var(--ease), border-color var(--dur) var(--ease), background-color var(--dur) var(--ease);
 }
 .chip-btn:hover { background-color: var(--accent-dim); }
 .chip-btn[aria-pressed="true"] { color: var(--accent-text); border-color: var(--accent); }
-.chip-btn__count { font-family: var(--font-body); font-weight: 500; font-size: 11px; letter-spacing: 0; color: var(--text-muted); }
+.chip-btn__count { font-family: var(--font-body); font-weight: 500; font-size: 13px; letter-spacing: 0; color: var(--text-muted); }
 
 /* ---- Campo ---- */
 .field { display: grid; gap: var(--sp-3); }
-.field__label { font-family: var(--font-display); font-weight: 600; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent-text); }
-.field__error { font-size: 13px; color: var(--text-primary); }
+.field__label { font-family: var(--font-display); font-weight: 600; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent-text); }
+.field__error { font-size: 15px; color: var(--text-primary); }
 .input {
   width: 100%; min-height: 44px; padding: 0 var(--sp-7);
-  font-family: var(--font-body); font-weight: 400; font-size: 14px;
+  font-family: var(--font-body); font-weight: 400; font-size: 16px;
   color: var(--text-primary); background-color: var(--surface); border: 1px solid var(--border);
   transition: border-color var(--dur) var(--ease), background-color var(--dur) var(--ease);
 }
@@ -145,7 +145,7 @@
 .card:hover .card__cover img, .card:focus-within .card__cover img { transform: scale(1.04); }
 .card__body { display: grid; gap: var(--sp-4); padding: var(--sp-6) var(--sp-6) var(--sp-7); }
 .card__title {
-  font-family: var(--font-display); font-weight: 700; font-size: 15px; letter-spacing: 0.06em; text-transform: uppercase; line-height: 1.15;
+  font-family: var(--font-display); font-weight: 700; font-size: 16px; letter-spacing: 0.06em; text-transform: uppercase; line-height: 1.15;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere;
 }
 .card__meta { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
@@ -216,7 +216,7 @@ select.input { width: auto; min-width: 160px; }
 .cover-pick { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: var(--sp-5); align-items: center; min-height: 66px; padding: 0; text-align: left; color: var(--text-primary); background-color: var(--surface); border: 1px solid var(--border); }
 .cover-pick:hover { background-color: var(--accent-dim); border-color: var(--accent); }
 .cover-pick img { width: 44px; height: 66px; object-fit: cover; }
-.cover-pick span { padding-right: var(--sp-5); font-size: 13px; font-weight: 500; overflow-wrap: anywhere; }
+.cover-pick span { padding-right: var(--sp-5); font-size: 14px; font-weight: 500; overflow-wrap: anywhere; }
 .confirm { display: grid; gap: var(--sp-6); }
 
 /* ---- Importar / Ajustes ---- */
@@ -251,6 +251,5 @@ dialog.help::backdrop { background-color: rgba(26, 24, 22, 0.82); }
 .help__steps { display: grid; gap: var(--sp-7); padding-left: var(--sp-9); margin: 0; }
 .help__steps li { display: grid; gap: var(--sp-4); padding-left: var(--sp-2); }
 .help__steps li::marker { font-family: var(--font-display); font-weight: 700; color: var(--accent-text); }
-.help__code { margin: 0; padding: var(--sp-5) var(--sp-6); background-color: var(--bg); border: 1px solid var(--border); overflow-x: auto; font: 500 13px/1.5 var(--font-body); color: var(--text-primary); }
+.help__code { margin: 0; padding: var(--sp-5) var(--sp-6); background-color: var(--bg); border: 1px solid var(--border); overflow-x: auto; font: 500 14px/1.5 var(--font-body); color: var(--text-primary); }
 .help__link { color: var(--accent-text); text-decoration: underline; text-underline-offset: 3px; overflow-wrap: anywhere; }
-.help__note { margin: 0; font-family: var(--font-body); font-weight: 300; font-size: 13px; letter-spacing: 0; text-transform: none; color: var(--text-secondary); }

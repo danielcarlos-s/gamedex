@@ -49,7 +49,7 @@ function bodyHtml(topic) {
       ${s.cmd ? `<pre class="help__code"><code>${esc(s.cmd)}</code></pre>` : ''}
       ${s.link ? `<a class="help__link" href="${esc(s.link.url)}" target="_blank" rel="noopener noreferrer">${esc(t(`help.${topic}.${s.link.k}`))}</a>` : ''}
     </li>`).join('');
-  const notes = def.notes.map((/** @type {string} */ n) => `<p class="t-label help__note">${esc(t(`help.${topic}.${n}`))}</p>`).join('');
+  const notes = def.notes.map((/** @type {string} */ n) => `<p class="t-hint help__note">${esc(t(`help.${topic}.${n}`))}</p>`).join('');
   return `<ol class="help__steps t-body">${steps}</ol>${notes}`;
 }
 
