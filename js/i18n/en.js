@@ -4,6 +4,7 @@ export const en = {
   'nav.label': 'Main navigation',
   'nav.library': 'Library',
   'nav.import': 'Import',
+  'nav.menu': 'Menu',
   'nav.settings': 'Settings',
 
   'lang.group': 'Language',

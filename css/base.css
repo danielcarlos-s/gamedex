@@ -100,10 +100,6 @@ ul, ol { padding: 0; list-style: none; }
 @media (max-width: 600px) {
   .nav { padding-inline: var(--sp-7); gap: var(--sp-5); }
   .wordmark { font-size: 20px; }
-  .nav__links {
-    position: fixed; inset: auto 0 0 0; z-index: 50; margin: 0;
-    background-color: var(--bg-secondary); border-top: 1px solid var(--border);
-  }
-  .nav__links > * { flex: 1; }
-  .shell { padding-inline: var(--sp-7); padding-bottom: calc(var(--sp-12) + 56px); }
+  .nav__links { display: none; }
+  .shell { padding-inline: var(--sp-7); padding-bottom: var(--sp-12); }
 }

@@ -4,6 +4,7 @@ export const pt = {
   'nav.label': 'Navegação principal',
   'nav.library': 'Biblioteca',
   'nav.import': 'Importar',
+  'nav.menu': 'Menu',
   'nav.settings': 'Ajustes',
 
   'lang.group': 'Idioma',

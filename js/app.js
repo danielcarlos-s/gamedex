@@ -1,6 +1,7 @@
 import { initI18n, applyI18n, onLangChange, t } from './i18n/index.js';
 import { initLangToggle } from './lang-toggle.js';
 import { initThemeToggle } from './theme.js';
+import { initNavMenu } from './menu.js';
 import { loadStores } from './data/stores.js';
 import { icon } from './icons.js';
 import { mountLibrary } from './ui/library.js';
@@ -93,6 +94,8 @@ function render({ moveFocus = false } = {}) {
     if (a.dataset.route === route.name) a.setAttribute('aria-current', 'page');
     else a.removeAttribute('aria-current');
   });
+  // o botão da engrenagem acende quando a página atual está dentro do menu
+  document.querySelector('[data-menu-btn]')?.toggleAttribute('data-current', !!document.querySelector('.menu__item[aria-current]'));
   document.title = `${t(TITLES[route.name])} — Gamedex`;
 
   if (moveFocus && key !== lastKey) {
@@ -105,6 +108,7 @@ function render({ moveFocus = false } = {}) {
 initI18n();
 initLangToggle();
 initThemeToggle();
+initNavMenu();
 onLangChange(() => render());
 window.addEventListener('hashchange', () => render({ moveFocus: true }));
 await loadStores(); // lojas criadas pelo usuário precisam estar prontas antes da primeira tela

@@ -73,7 +73,8 @@
   transition: color var(--dur) var(--ease), border-color var(--dur) var(--ease), background-color var(--dur) var(--ease);
 }
 .icon-link:hover { background-color: var(--accent-dim); color: var(--text-primary); }
-.icon-link[aria-current="page"] { color: var(--accent-text); border-color: var(--accent); }
+.icon-link[aria-current="page"], .icon-link[data-current], .icon-link[aria-expanded="true"] { color: var(--accent-text); border-color: var(--accent); }
+.icon-link { cursor: pointer; font: inherit; }
 .lang-toggle button:hover, .seg-toggle button:hover { background-color: var(--accent-dim); }
 .lang-toggle button[aria-pressed="true"], .seg-toggle button[aria-pressed="true"] { color: var(--accent-text); border-color: var(--accent); }
 @media (max-width: 600px) { .lang-toggle button, .seg-toggle button { padding: 0 var(--sp-3); } }
@@ -300,3 +301,14 @@ dialog.help::backdrop { background-color: var(--overlay); }
 .form-error { color: var(--accent-text); }
 
 .view > *, .filters, .filters > * { min-width: 0; }
+
+/* ---- Menu da engrenagem ---- */
+.menu { position: relative; }
+.menu__panel { position: absolute; right: 0; top: calc(100% + var(--sp-4)); z-index: 60; min-width: 200px; padding: var(--sp-3); display: grid; gap: var(--sp-1); background-color: var(--surface); }
+.menu__item {
+  display: flex; align-items: center; gap: var(--sp-5); min-height: 44px; padding: 0 var(--sp-7);
+  font-family: var(--font-display); font-weight: 600; font-size: 15px; letter-spacing: 0.1em; text-transform: uppercase; line-height: 1;
+  color: var(--text-secondary);
+}
+.menu__item:hover { color: var(--text-primary); background-color: var(--accent-dim); }
+.menu__item[aria-current="page"] { color: var(--accent-text); }
