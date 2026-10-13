@@ -1,13 +1,21 @@
 import { t, getLang, formatNumber } from '../i18n/index.js';
 import { icon } from '../icons.js';
 import { normalizeTitle, isStoreId } from '../data/model.js';
-import { gameStores, esc } from './grid.js';
+import { gameStores, esc, VIEW_MODES } from './grid.js';
 import { mountStoreTabs } from './store-tabs.js';
 
 export const STATUS_ORDER = ['backlog', 'playing', 'paused', 'finished', 'completed', 'dropped'];
 const SORTS = ['name', 'time', 'last', 'added'];
 const DEFAULT_DIR = { name: 'asc', time: 'desc', last: 'desc', added: 'desc' };
 const DIMS = ['q', 'store', 'status', 'tags', 'genres', 'fav', 'multi', 'played'];
+
+const VIEW_KEY = 'gamedex-view';
+/** Modo de exibição salvo neste navegador (preferência do dispositivo: não vai na URL nem no backup). */
+export function readView() {
+  try { const v = localStorage.getItem(VIEW_KEY); if (VIEW_MODES.includes(v)) return v; } catch { /* sem localStorage */ }
+  return 'grid';
+}
+function saveView(v) { try { localStorage.setItem(VIEW_KEY, v); } catch { /* sem localStorage */ } }
 
 const list = (v) => (v ? v.split(',').filter(Boolean) : []);
 
@@ -28,6 +36,7 @@ export function parseState(query) {
     played: played === 'yes' || played === 'no' ? played : null,
     sort,
     dir,
+    view: readView(),
   };
 }
 
@@ -177,6 +186,7 @@ export function buildPanel(root, games, state, onChange, { panelId }) {
           <button class="btn btn--ghost cut-a-8 is-chamfered" type="button" data-role="clear">${esc(t('filters.clear'))}</button>
         </div>
         <div class="row">
+          <div class="seg-toggle" role="group" aria-label="${esc(t('view.label'))}">${VIEW_MODES.map((m) => `<button type="button" class="cut-a-6 is-chamfered" data-view="${m}" aria-pressed="false" aria-label="${esc(t('view.' + m))}" title="${esc(t('view.' + m))}">${icon(m === 'grid' ? 'view-grid' : m === 'large' ? 'library' : 'view-list')}</button>`).join('')}</div>
           <label class="t-label" for="f-sort">${esc(t('filters.sort'))}</label>
           <select id="f-sort" class="input cut-a-6 is-chamfered">${SORT_OPTIONS.map((o) => `<option value="${o}">${esc(t('sort.opt.' + o.replace(':', '.')))}</option>`).join('')}</select>
         </div>
@@ -217,6 +227,11 @@ export function buildPanel(root, games, state, onChange, { panelId }) {
   });
 
   const toggleSet = (set, v) => { if (set.has(v)) set.delete(v); else set.add(v); };
+  root.querySelectorAll('[data-view]').forEach((b) => b.addEventListener('click', () => {
+    state.view = b.dataset.view;
+    saveView(state.view);
+    onChange(state);
+  }));
   $('#f-adv').addEventListener('click', (e) => {
     const b = e.target.closest('.chip-btn');
     if (!b) return;
@@ -240,6 +255,7 @@ export function buildPanel(root, games, state, onChange, { panelId }) {
     if (document.activeElement !== q) q.value = s.q;
     sortEl.value = `${s.sort}:${s.dir}`;
     tabs.update(s, counts);
+    root.querySelectorAll('[data-view]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.view === s.view)));
     const cssq = (v) => CSS.escape(v);
     STATUS_ORDER.forEach((x) => setChip(`[data-status="${x}"]`, s.status.has(x), counts.status[x]));
     genres.forEach((x) => setChip(`[data-genre="${cssq(x)}"]`, s.genres.has(x), counts.genres[x]));

@@ -1,4 +1,4 @@
-import { t, formatPlaytime } from '../i18n/index.js';
+import { t, formatPlaytime, formatDate } from '../i18n/index.js';
 import { icon } from '../icons.js';
 import { STORES } from '../data/model.js';
 import { allStoreIds, customStore } from '../data/stores.js';
@@ -40,7 +40,7 @@ export function statusChip(status) {
 
 function coverHtml(game) {
   if (!game.coverUrl) return `<div class="cover-ph">${esc(game.title)}</div>`;
-  return `<img src="${esc(game.coverUrl)}" alt="" loading="lazy" decoding="async" ${game.coverAppId ? `data-appid="${esc(game.coverAppId)}"` : ''}>`;
+  return `<img src="${esc(game.coverUrl)}" alt="" data-title="${esc(game.title)}" loading="lazy" decoding="async" ${game.coverAppId ? `data-appid="${esc(game.coverAppId)}"` : ''}>`;
 }
 
 function cardHtml(g) {
@@ -56,13 +56,34 @@ function cardHtml(g) {
   </article>`;
 }
 
+function rowHtml(g) {
+  const fav = g.favorite ? `<span class="lrow__fav">${icon('heart', { filled: true })}<span class="visually-hidden">${esc(t('common.favorite'))}</span></span>` : '';
+  const last = g.lastPlayedAt ? formatDate(g.lastPlayedAt) : '';
+  return `<li class="lrow" data-id="${esc(g.id)}">
+    <div class="lrow__cover">${coverHtml(g)}</div>
+    <h3 class="lrow__title">${esc(g.title)}${fav}</h3>
+    <div class="lrow__chips">${gameStores(g).map(storeChip).join('')}${statusChip(g.status)}</div>
+    <p class="lrow__time t-data">${esc(formatPlaytime(g.playtimeMinutes))}</p>
+    <p class="lrow__last t-hint">${last ? `<span class="visually-hidden">${esc(t('list.last'))}: </span>${esc(last)}` : ''}</p>
+    <a class="lrow__link" href="#/game/${encodeURIComponent(g.id)}" aria-label="${esc(g.title)}"></a>
+  </li>`;
+}
+
+export const VIEW_MODES = ['grid', 'large', 'list'];
+
 /**
- * Renderiza a grade de cards em `container` (um único innerHTML — 1.000 cards em poucos ms).
- * @param {HTMLElement} container
+ * Cria o container da coleção no modo pedido e o preenche (um único innerHTML — 1.000 itens em poucos ms).
+ * `grid` = cards padrão, `large` = cards maiores (menos por linha), `list` = uma linha por jogo.
  * @param {object[]} games
+ * @param {'grid'|'large'|'list'} [mode]
+ * @returns {HTMLElement}
  */
-export function renderGrid(container, games) {
-  container.innerHTML = games.map(cardHtml).join('');
+export function renderGrid(games, mode = 'grid') {
+  const list = mode === 'list';
+  const el = document.createElement(list ? 'ul' : 'div');
+  el.className = list ? 'list' : mode === 'large' ? 'grid grid--large' : 'grid';
+  el.innerHTML = games.map(list ? rowHtml : cardHtml).join('');
+  return el;
 }
 
 /** Fallback de capa (6.2): library_600x900_2x → header.jpg → placeholder. Ligar uma vez por container. */
@@ -76,7 +97,7 @@ export function bindCoverFallback(container) {
       img.src = `https://cdn.cloudflare.steamstatic.com/steam/apps/${encodeURIComponent(appid)}/header.jpg`;
       return;
     }
-    const title = img.dataset.title ?? img.closest('.card')?.querySelector('.card__title')?.textContent ?? '';
+    const title = img.dataset.title ?? img.closest('.card, .lrow')?.querySelector('.card__title, .lrow__title')?.textContent ?? '';
     const ph = document.createElement('div');
     ph.className = 'cover-ph';
     ph.textContent = title;

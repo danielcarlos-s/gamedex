@@ -64,10 +64,8 @@ export function mountLibrary(root, query) {
       body.querySelector('[data-role="clear-all"]').addEventListener('click', () => filtersRoot.querySelector('[data-role="clear"]').click());
       return;
     }
-    const grid = document.createElement('div');
-    grid.className = 'grid';
     const t0 = performance.now();
-    renderGrid(grid, result);
+    const grid = renderGrid(result, state.view);
     grid.dataset.renderMs = String(Math.round(performance.now() - t0));
     body.replaceChildren(grid);
   }

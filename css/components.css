@@ -313,3 +313,41 @@ dialog.help::backdrop { background-color: var(--overlay); }
 }
 .menu__item:hover { color: var(--text-primary); background-color: var(--accent-dim); }
 .menu__item[aria-current="page"] { color: var(--accent-text); }
+
+/* ---- Modos de visualização: capas grandes e lista ---- */
+.grid--large { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 4px; }
+.grid--large .card__title { -webkit-line-clamp: 3; font-size: 18px; }
+.grid--large .card:hover .card__cover img, .grid--large .card:focus-within .card__cover img { transform: scale(1.02); }
+.list { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.lrow {
+  position: relative; display: grid; align-items: center; column-gap: var(--sp-7);
+  grid-template-columns: 40px minmax(0, 1fr) minmax(160px, auto) 110px 130px;
+  min-height: 64px; padding: var(--sp-4) var(--sp-7);
+  background-color: var(--surface); border: 1px solid var(--border);
+  transition: border-color var(--dur) var(--ease), background-color var(--dur) var(--ease);
+}
+.lrow:hover, .lrow:focus-within { background-color: var(--surface-2); border-color: var(--accent); }
+.lrow__cover { width: 40px; height: 60px; overflow: hidden; background-color: var(--bg-secondary); }
+.lrow__cover img { width: 100%; height: 100%; object-fit: cover; }
+.lrow__cover .cover-ph { padding: 0; font-size: 7px; line-height: 1.1; overflow: hidden; }
+.lrow__title {
+  font-family: var(--font-display); font-weight: 700; font-size: 16px; letter-spacing: 0.06em; text-transform: uppercase; line-height: 1.15;
+  min-width: 0; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.lrow__fav { color: var(--accent-text); margin-left: var(--sp-4); display: inline-block; vertical-align: middle; }
+.lrow__fav .icon { width: 16px; height: 16px; }
+.lrow__chips { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.lrow__time, .lrow__last { margin: 0; text-align: right; }
+.lrow__link { position: absolute; inset: 0; z-index: 1; }
+@media (max-width: 600px) {
+  .grid--large { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+  .lrow {
+    grid-template-columns: 40px minmax(0, 1fr) auto; column-gap: var(--sp-6); row-gap: var(--sp-3);
+    grid-template-areas: "cover title title" "cover chips time";
+  }
+  .lrow__cover { grid-area: cover; align-self: start; }
+  .lrow__title { grid-area: title; }
+  .lrow__chips { grid-area: chips; }
+  .lrow__time { grid-area: time; align-self: end; }
+  .lrow__last { display: none; }
+}
