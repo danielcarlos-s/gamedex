@@ -135,8 +135,11 @@ export function mountSettings(root) {
   async function saveSteam() {
     const id = root.querySelector('#s-steamid').value.trim();
     const key = root.querySelector('#s-steamkey').value.trim();
-    const bad = (id && !/^\d{17}$/.test(id)) || (key && !/^[0-9a-f]{32}$/i.test(key)) || ((key || id) && (!id || !(key || hasKey)));
-    if (bad) { msg.steam = { error: 'bad_request' }; return render('#s-steamid'); }
+    const bad = (id && !/^\d{17}$/.test(id)) ? 'steam_id_invalid'
+      : (key && !/^[0-9a-f]{32}$/i.test(key)) ? 'steam_key_invalid'
+      : (key && !id) ? 'steam_id_required'
+      : (id && !key && !hasKey) ? 'steam_key_required' : null;
+    if (bad) { msg.steam = { error: bad }; return render('#s-steamid'); }
     try {
       if (id) {
         await db.setMeta('steamId', id);

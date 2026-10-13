@@ -137,7 +137,7 @@ export function mountImport(root) {
     else if (phase === 'preview' || phase === 'applying') body = previewHtml();
     else if (phase === 'done') body = doneHtml();
     else if (phase === 'backup') body = '<div data-role="backup"></div>';
-    else body = (error ? `<div class="panel state--error stack" role="alert"><span class="row">${icon('alert')}<strong>${esc(t('state.error.title'))}</strong></span><p class="t-body">${esc(t('err.' + error))}</p>${error === 'misconfigured' ? `<a class="btn cut-a-8 is-chamfered" href="#/settings">${esc(t('import.open.settings'))}</a>` : ''}</div>` : '') + idleHtml();
+    else body = (error ? `<div class="panel state--error stack" role="alert"><span class="row">${icon('alert')}<strong>${esc(t('state.error.title'))}</strong></span><p class="t-body">${esc(t('err.' + error))}</p>${(error === 'misconfigured' || error === 'steam_no_credentials') ? `<a class="btn cut-a-8 is-chamfered" href="#/settings">${esc(t('import.open.settings'))}</a>` : ''}</div>` : '') + idleHtml();
     root.innerHTML = `${head}<div class="stack">${body}</div>`;
     if (phase === 'backup') mountBackupImport(root.querySelector('[data-role="backup"]'), backupFile, { onCancel: reset });
     if (focusSel) root.querySelector(focusSel)?.focus();
@@ -157,7 +157,10 @@ export function mountImport(root) {
     try {
       const url = await workerUrl();
       if (!url) throw { code: 'misconfigured' };
-      const incoming = await fetchOwned(url, await steamCreds());
+      const creds = await steamCreds();
+      let incoming;
+      try { incoming = await fetchOwned(url, creds); }
+      catch (e) { throw !creds && e?.code === 'misconfigured' ? { code: 'steam_no_credentials' } : e; }
       await buildPreview(incoming, [], 'api', true);
     } catch (e) { phase = 'idle'; error = e?.code || 'network'; }
     if (!disposed) render(error ? null : '[data-act="confirm"]');
