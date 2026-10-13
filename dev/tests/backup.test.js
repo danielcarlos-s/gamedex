@@ -461,8 +461,9 @@ test('lojas: criar, renomear (id fixo), nomes únicos, excluir só se vazia', as
   assert.ok(/^c-[a-z0-9]{8}$/.test(bn.id) && bn.name === 'Battle.net' && bn.hue === 195);
   assert.deepEqual(stores.allStoreIds().slice(-2), [bn.id, 'other']);
   await assert.rejectsCode(() => stores.createStore('battle NET', 85), 'store_name_taken');
-  await assert.rejectsCode(() => stores.createStore('Epic', 85), 'store_name_taken');
-  await assert.rejectsCode(() => stores.createStore('Outra', 85), 'store_name_taken');
+  await assert.rejectsCode(() => stores.createStore('Epic', 85), 'store_name_builtin');
+  await assert.rejectsCode(() => stores.createStore('GOG', 85), 'store_name_builtin');
+  await assert.rejectsCode(() => stores.createStore('Outra', 85), 'store_name_builtin');
   await assert.rejectsCode(() => stores.createStore('   ', 85), 'store_name_required');
   await assert.rejectsCode(() => stores.createStore('x'.repeat(31), 85), 'store_name_long');
   await assert.rejectsCode(() => stores.createStore('Xbox', 999), 'bad_request');

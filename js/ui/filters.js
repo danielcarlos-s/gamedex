@@ -122,8 +122,8 @@ export function buildPanel(root, games, state, onChange) {
   games.forEach((g) => { (g.tags || []).forEach((x) => tagSet.add(x)); (g.genres || []).forEach((x) => genreSet.add(x)); });
   const tags = [...tagSet].sort((a, b) => a.localeCompare(b));
   const genres = [...genreSet].sort((a, b) => a.localeCompare(b));
-  const present = (list_, key, fn) => list_.filter((x) => games.some((g) => fn(g, x)));
-  const stores = present(allStoreIds(), 'stores', (g, s) => gameStores(g).includes(s));
+  // todas as lojas, mesmo sem jogos (como os status): assim dá para ver que existem e filtrar/adicionar nelas
+  const stores = allStoreIds();
 
   const moreOpen = false; // sempre fechado ao carregar; o contador do botão mostra se há filtros ativos
   root.innerHTML = `

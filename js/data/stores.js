@@ -100,7 +100,8 @@ export function customStoreFromText(text) {
 }
 
 /**
- * Valida um nome para criar/renomear. Lança `store_name_required`, `store_name_long` ou `store_name_taken`.
+ * Valida um nome para criar/renomear. Lança `store_name_required`, `store_name_long`, `store_name_builtin` (é uma loja
+ * fixa do app: não precisa criar) ou `store_name_taken` (já existe uma criada com esse nome).
  * @param {string} name
  * @param {string} [selfId] loja sendo renomeada (pode manter o próprio nome)
  * @returns {string} o nome aparado
@@ -110,7 +111,8 @@ function checkName(name, selfId) {
   if (!n || !squashName(n)) throw { code: 'store_name_required' };
   if (n.length > MAX_NAME) throw { code: 'store_name_long' };
   const k = squashName(n);
-  if (RESERVED.includes(k) || custom.some((s) => s.id !== selfId && squashName(s.name) === k)) throw { code: 'store_name_taken' };
+  if (RESERVED.includes(k)) throw { code: 'store_name_builtin' };
+  if (custom.some((s) => s.id !== selfId && squashName(s.name) === k)) throw { code: 'store_name_taken' };
   return n;
 }
 
