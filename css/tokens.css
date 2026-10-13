@@ -1,0 +1,59 @@
+/* ELLOS — tokens (tema único: escuro). Fonte: DESIGN-SYSTEM.md.
+   Regra dura: CSS de componente nunca redefine um token. Sem @import/url(). */
+:root {
+  color-scheme: dark;
+
+  /* Núcleo */
+  --accent: #FD8B10;
+  --accent-text: #FD8B10;
+  --on-accent: #1A1816;
+  --accent-dim: rgba(253, 139, 16, 0.12);
+
+  /* Superfícies e texto */
+  --bg: #1A1816;
+  --bg-secondary: #211F1D;
+  --surface: #242220;
+  --surface-2: #2C2A28;
+  --border: #3C3838;
+  --border-strong: #FD8B10;
+  --text-primary: #F2EFE8;
+  --text-secondary: #B8B2A8;
+  --text-muted: #918A83;
+
+  /* Selos de loja — paleta categórica (L e C fixos, só a matiz varia) */
+  --store-steam: oklch(0.78 0.115 250);
+  --store-epic: oklch(0.78 0.115 305);
+  --store-gog: oklch(0.78 0.115 25);
+  --store-ubisoft: oklch(0.78 0.115 165);
+  --store-ea: oklch(0.78 0.115 55);
+  --store-amazon: oklch(0.78 0.115 130);
+  --store-other: var(--text-muted);
+
+  /* Tipografia */
+  --font-display: 'Rajdhani', 'Arial Narrow', sans-serif;
+  --font-body: 'Space Grotesk', system-ui, sans-serif;
+
+  /* Espaçamento */
+  --sp-1: 2px;  --sp-2: 4px;  --sp-3: 6px;  --sp-4: 8px;  --sp-5: 10px;
+  --sp-6: 12px; --sp-7: 16px; --sp-8: 20px; --sp-9: 24px; --sp-10: 32px;
+  --sp-11: 40px; --sp-12: 48px; --sp-13: 64px; --sp-14: 80px;
+
+  /* Estrutura */
+  --nav-h: 72px;
+  --gutter: clamp(24px, 5vw, 80px);
+  --section-gap: clamp(80px, 12vw, 160px);
+
+  /* Movimento */
+  --ease: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  --dur: 0.3s;
+  --dur-media: 0.6s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

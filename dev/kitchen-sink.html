@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="pt-BR" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kitchen sink — Gamedex</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Space+Grotesk:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/tokens.css">
+  <link rel="stylesheet" href="../css/base.css">
+  <link rel="stylesheet" href="../css/components.css">
+  <style>
+    .ks-cut { width: 96px; height: 44px; background-color: var(--surface-2); border: 1px solid var(--border); }
+    .ks-cut--b { height: 96px; }
+    .ks-icons { display: flex; flex-wrap: wrap; gap: var(--sp-7); }
+    .ks-icons .icon { width: 24px; height: 24px; }
+    .ks-grid { max-width: 560px; }
+  </style>
+</head>
+<body>
+  <header class="nav">
+    <a class="wordmark" href="../index.html">GAME<span>DEX</span></a>
+    <div class="nav__right">
+      <div class="lang-toggle" role="group">
+        <button type="button" class="cut-a-6 is-chamfered" data-lang="en" aria-pressed="false">EN</button>
+        <button type="button" class="cut-a-6 is-chamfered" data-lang="pt" aria-pressed="false">PT</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="shell">
+    <div class="shell__inner">
+      <div class="view" id="ks"></div>
+    </div>
+  </main>
+
+  <script type="module" src="kitchen-sink.js"></script>
+</body>
+</html>

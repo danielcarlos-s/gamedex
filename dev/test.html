@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="pt-BR" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>gamedex — testes</title>
+<style>
+  body { margin: 0; padding: 24px; background: #0e0e0e; color: #e8e4de; font: 14px/1.5 system-ui, sans-serif; }
+  h1 { font-size: 16px; letter-spacing: .08em; text-transform: uppercase; margin: 0 0 8px; }
+  #summary { font-weight: 700; margin-bottom: 16px; }
+  #summary.pass { color: #7bd88f; } #summary.fail { color: #ff7b72; }
+  ul { list-style: none; margin: 0; padding: 0; }
+  li { padding: 4px 0; border-bottom: 1px solid #2a2a2a; }
+  li.ok::before { content: "OK   "; color: #7bd88f; font-family: monospace; }
+  li.fail::before { content: "FAIL "; color: #ff7b72; font-family: monospace; }
+  pre { margin: 4px 0 0; color: #ff7b72; white-space: pre-wrap; }
+  h2 { font-size: 13px; margin: 24px 0 8px; color: #9a948a; text-transform: uppercase; }
+  pre.report { color: #e8e4de; }
+</style>
+</head>
+<body>
+<h1>gamedex — testes de dados</h1>
+<div id="summary">executando…</div>
+<ul id="list"></ul>
+<h2>Relatório</h2>
+<pre id="report" class="report"></pre>
+<script type="module">
+import { runAll } from './test-lib.js';
+import './tests/model.test.js';
+import './tests/db.test.js';
+import './tests/worker.test.js';
+import './tests/importers.test.js';
+import './tests/backup.test.js';
+
+const results = await runAll();
+const list = document.getElementById('list');
+for (const r of results) {
+  const li = document.createElement('li');
+  li.className = r.ok ? 'ok' : 'fail';
+  li.textContent = r.name;
+  if (!r.ok) { const pre = document.createElement('pre'); pre.textContent = r.error; li.append(pre); }
+  list.append(li);
+}
+const failed = results.filter((r) => !r.ok).length;
+const summary = document.getElementById('summary');
+summary.textContent = failed ? `${failed} FALHA(S) de ${results.length}` : `${results.length}/${results.length} passaram`;
+summary.className = failed ? 'fail' : 'pass';
+document.title = (failed ? 'FAIL' : 'PASS') + ' — gamedex testes';
+document.getElementById('report').textContent = globalThis.__testReport?.join('\n') ?? '';
+window.__results = results;
+</script>
+</body>
+</html>

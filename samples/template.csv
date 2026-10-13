@@ -1,0 +1,4 @@
+title,store,storeGameId,status,playtimeMinutes,tags,genres,rating,developer,year,notes,coverUrl
+Example Quest One,epic,,playing,120,co-op|indie,Adventure|RPG,4,Fictional Studio,2021,Fictional sample: delete these rows.,
+Example Quest Two,gog,,finished,900,,Strategy,5,,2018,,
+Example Quest Three,ubisoft,,backlog,,to-play,,,,,,
