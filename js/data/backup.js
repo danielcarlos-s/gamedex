@@ -3,9 +3,11 @@
 // Sem DOM além de `Blob`/`URL`/`<a download>` em `downloadBackup`; sem texto para o usuário: falhas são `throw { code }`.
 //
 // Formato: { "app": "gamedex", "schemaVersion": 1, "exportedAt": "ISO", "games": [...], "meta": { lastSteamSync } }
-// (sem handles, sem workerUrl, sem lastBackupAt).
+// (sem handles, sem workerUrl, sem lastBackupAt). Campos opcionais em `meta` (aditivos, a versão do schema não muda):
+// `steamId` (público) e `steamKeyEnc` (chave da Steam API cifrada com senha; só quando o usuário pede).
 
 import { getAllGames, getMeta, setMeta, putGames, replaceGames, onChange } from './db.js';
+import { encryptSecret, decryptSecret } from './keycrypt.js';
 import { SCHEMA_VERSION, STATUSES, validateGame, recalcTotals, normalizeTitle } from './model.js';
 
 /** @typedef {import('./model.js').Game} Game */
@@ -46,28 +48,42 @@ const nowIso = () => new Date().toISOString();
 // ---------------------------------------------------------------- exportar
 
 /**
- * Monta o objeto de backup com todos os jogos e `meta.lastSteamSync`.
- * @returns {Promise<{app: string, schemaVersion: number, exportedAt: string, games: Game[], meta: {lastSteamSync: string|null}}>}
+ * Monta o objeto de backup com todos os jogos, `meta.lastSteamSync` e, se houver, `meta.steamId`.
+ * Com `options.includeKey` + `options.password`, inclui a chave Steam cifrada em `meta.steamKeyEnc`.
+ * @param {BackupOptions} [options]
+ * @returns {Promise<{app: string, schemaVersion: number, exportedAt: string, games: Game[], meta: Record<string, any>}>}
  */
-async function buildBackup() {
-  const [games, lastSteamSync] = await Promise.all([getAllGames(), getMeta('lastSteamSync')]);
-  return { app: APP, schemaVersion: SCHEMA_VERSION, exportedAt: nowIso(), games, meta: { lastSteamSync } };
+async function buildBackup(options = {}) {
+  const [games, lastSteamSync, steamId, steamKey] = await Promise.all([getAllGames(), getMeta('lastSteamSync'), getMeta('steamId'), getMeta('steamKey')]);
+  /** @type {Record<string, any>} */ const meta = { lastSteamSync };
+  if (steamId) meta.steamId = steamId;
+  if (options.includeKey && steamKey) meta.steamKeyEnc = await encryptSecret(steamKey, options.password || '');
+  return { app: APP, schemaVersion: SCHEMA_VERSION, exportedAt: nowIso(), games, meta };
 }
 
 /**
+ * @typedef {object} BackupOptions
+ * @property {boolean} [includeKey] incluir a chave Steam (exige `password`; lança `bad_request` sem ela)
+ * @property {string} [password] senha que cifra a chave
+ */
+
+/**
  * Gera o arquivo de backup em memória (não grava `lastBackupAt`; quem entrega o arquivo é que grava).
+ * Sem `options`, a chave Steam NUNCA entra (é o caso do auto-save).
+ * @param {BackupOptions} [options]
  * @returns {Promise<Blob>} JSON `application/json`
  */
-export async function exportBackup() {
-  return new Blob([JSON.stringify(await buildBackup(), null, 1)], { type: 'application/json' });
+export async function exportBackup(options = {}) {
+  return new Blob([JSON.stringify(await buildBackup(options), null, 1)], { type: 'application/json' });
 }
 
 /**
  * Baixa o backup como `gamedex-backup-AAAA-MM-DD.json` e grava `lastBackupAt`.
+ * @param {BackupOptions} [options]
  * @returns {Promise<void>}
  */
-export async function downloadBackup() {
-  const blob = await exportBackup();
+export async function downloadBackup(options = {}) {
+  const blob = await exportBackup(options);
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -85,7 +101,7 @@ export async function downloadBackup() {
  * Lê e valida um arquivo de backup. Nada é gravado aqui.
  * Lança `backup_invalid` (JSON ilegível, não é do gamedex, jogo inválido) ou `backup_version` (versão mais nova).
  * @param {Blob|string} file
- * @returns {Promise<{games: Game[], lastSteamSync: string|null}>}
+ * @returns {Promise<{games: Game[], lastSteamSync: string|null, steamId: string|null, steamKeyEnc: any}>}
  */
 async function readBackup(file) {
   let data;
@@ -104,7 +120,29 @@ async function readBackup(file) {
     ids.add(g.id);
   }
   const sync = data.meta?.lastSteamSync;
-  return { games: data.games, lastSteamSync: typeof sync === 'string' ? sync : null };
+  const sid = data.meta?.steamId;
+  const keyEnc = data.meta?.steamKeyEnc;
+  return {
+    games: data.games,
+    lastSteamSync: typeof sync === 'string' ? sync : null,
+    steamId: typeof sid === 'string' && /^\d{17}$/.test(sid) ? sid : null,
+    steamKeyEnc: keyEnc && typeof keyEnc === 'object' ? keyEnc : null,
+  };
+}
+
+/**
+ * O arquivo traz uma chave Steam cifrada? Só olha o JSON (a UI usa para pedir a senha). Nunca lança.
+ * @param {Blob|string} file
+ * @returns {Promise<boolean>}
+ */
+export async function backupHasKey(file) {
+  try {
+    const text = typeof file === 'string' ? file : await file.text();
+    const k = JSON.parse(text.replace(/^\uFEFF/, ''))?.meta?.steamKeyEnc;
+    return !!k && typeof k === 'object';
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -222,26 +260,36 @@ export function planBackupMerge(existing, fileGames, now = nowIso()) {
  *   Quem chama deve pedir confirmação antes.
  * - `'merge'`: mescla pelas regras da seção 5 (ver `planBackupMerge`), ownerships novas com `source: 'backup'`.
  * Valida o arquivo inteiro antes de gravar qualquer coisa. Lança `{ code }`: `backup_invalid`, `backup_version`,
- * `bad_request` (modo desconhecido), `idb_unavailable`.
+ * `bad_request` (modo desconhecido), `idb_unavailable`, `backup_password` (senha errada; nada é gravado).
+ * SteamID do arquivo: restaurado sempre (em `merge`, só se não houver um local). Chave Steam: só com `options.password`
+ * correta (em `merge`, só se não houver uma local); sem senha o resto é importado e `steam.key` = `'skipped'`.
  * @param {Blob|string} file
  * @param {'replace'|'merge'} mode
- * @returns {Promise<{mode: 'replace'|'merge', created: number, updated: number, merged: number}>}
+ * @param {{password?: string}} [options]
+ * @returns {Promise<{mode: 'replace'|'merge', created: number, updated: number, merged: number, steam: {id: boolean, key: 'none'|'restored'|'skipped'}}>}
  */
-export async function importBackup(file, mode) {
+export async function importBackup(file, mode, options = {}) {
   if (mode !== 'replace' && mode !== 'merge') throw { code: 'bad_request' };
-  const { games, lastSteamSync } = await readBackup(file);
+  const { games, lastSteamSync, steamId, steamKeyEnc } = await readBackup(file);
+  const plainKey = steamKeyEnc && options.password ? await decryptSecret(steamKeyEnc, options.password) : null;
+  const steam = async () => {
+    /** @type {{id: boolean, key: 'none'|'restored'|'skipped'}} */ const r = { id: false, key: steamKeyEnc ? 'skipped' : 'none' };
+    if (steamId && (mode === 'replace' || !(await getMeta('steamId')))) { await setMeta('steamId', steamId); r.id = true; }
+    if (plainKey && (mode === 'replace' || !(await getMeta('steamKey')))) { await setMeta('steamKey', plainKey); r.key = 'restored'; }
+    return r;
+  };
 
   if (mode === 'replace') {
     await replaceGames(games);
     if (lastSteamSync) await setMeta('lastSteamSync', lastSteamSync);
-    return { mode, created: games.length, updated: 0, merged: 0 };
+    return { mode, created: games.length, updated: 0, merged: 0, steam: await steam() };
   }
 
   const plan = planBackupMerge(await getAllGames(), games);
   await putGames([...plan.toCreate, ...plan.toUpdate.map((u) => u.after)]);
   const current = await getMeta('lastSteamSync');
   if (lastSteamSync && latest(current, lastSteamSync) !== current) await setMeta('lastSteamSync', lastSteamSync);
-  return { mode, created: plan.counts.new, updated: plan.counts.updated, merged: plan.counts.merged };
+  return { mode, created: plan.counts.new, updated: plan.counts.updated, merged: plan.counts.merged, steam: await steam() };
 }
 
 // ---------------------------------------------------------------- arquivo vinculado

@@ -19,6 +19,7 @@ export function mountSettings(root) {
   let workerUrl = '';
   let steamId = '';
   let hasKey = false;
+  let withKey = false;
   let lastBackup = null;
   let gamesCount = 0;
   let link = 'unsupported';
@@ -102,6 +103,14 @@ export function mountSettings(root) {
           <h2 class="t-section">${esc(t('settings.backup.title'))}</h2>
           <p class="t-body measure">${esc(t('settings.backup.text'))}</p>
           ${age ? `<p class="${age.stale ? 'warn' : 't-data'}" ${age.stale ? 'role="status"' : ''}>${age.stale ? icon('alert') : ''} ${esc(age.text)}</p>` : ''}
+          ${hasKey ? `<div class="stack">
+            <label class="choice"><input type="checkbox" id="s-bk-key" ${withKey ? 'checked' : ''}>
+              <span><span class="choice__title">${esc(t('settings.backup.key'))}</span><span class="t-body">${esc(t('settings.backup.key.text'))}</span></span></label>
+            ${withKey ? `<div class="field"><label class="field__label" for="s-bk-pw">${esc(t('settings.backup.password'))}</label>
+              <input id="s-bk-pw" class="input cut-a-6 is-chamfered" type="password" autocomplete="new-password"></div>
+            <div class="field"><label class="field__label" for="s-bk-pw2">${esc(t('settings.backup.password2'))}</label>
+              <input id="s-bk-pw2" class="input cut-a-6 is-chamfered" type="password" autocomplete="new-password"></div>` : ''}
+          </div>` : ''}
           ${note(msg.backup)}
           <div class="row">
             <button type="button" class="btn btn--primary cut-a-8 is-chamfered" data-act="export">${icon('upload', { className: 'flip' })}<span>${esc(t('settings.backup.export'))}</span></button>
@@ -161,13 +170,22 @@ export function mountSettings(root) {
       db.setMeta('workerUrl', null).then(() => { workerUrl = ''; msg.workerUrl = { text: t('settings.worker.saved') }; render('#s-worker'); })
         .catch((err) => { msg.workerUrl = { error: err?.code || 'idb_unavailable' }; render(); });
     } else if (a === 'export') {
-      guard('backup', async () => { await downloadBackup(); lastBackup = (await db.getMeta('lastBackupAt')) || lastBackup; msg.backup = { text: t('settings.backup.exported') }; });
+      guard('backup', async () => {
+        /** @type {{includeKey?: boolean, password?: string}} */ const opts = {};
+        if (withKey && hasKey) {
+          const pw = root.querySelector('#s-bk-pw')?.value || '';
+          if (pw.length < 8) throw { code: 'password_short' };
+          if (pw !== root.querySelector('#s-bk-pw2')?.value) throw { code: 'password_mismatch' };
+          Object.assign(opts, { includeKey: true, password: pw });
+        }
+        await downloadBackup(opts); lastBackup = (await db.getMeta('lastBackupAt')) || lastBackup; msg.backup = { text: t('settings.backup.exported') }; });
     } else if (a === 'link') guard('link', async () => { await linkFile(); });
     else if (a === 'reconnect') guard('link', async () => { await reconnect(); });
     else if (a === 'unlink') guard('link', async () => { await unlinkFile(); auto = null; });
   });
 
   root.addEventListener('change', (e) => {
+    if (e.target.id === 's-bk-key') { withKey = e.target.checked; render(withKey ? '#s-bk-pw' : '#s-bk-key'); return; }
     if (e.target.id !== 's-bk' || !e.target.files[0]) return;
     const file = e.target.files[0];
     importing = true;

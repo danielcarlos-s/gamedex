@@ -111,7 +111,7 @@ test('backup: exportar → clearGames → importar (substituir) restaura idênti
   await db.clearGames();
   assert.equal((await db.getAllGames()).length, 0);
   const res = await backup.importBackup(blob, 'replace');
-  assert.deepEqual(res, { mode: 'replace', created: 43, updated: 0, merged: 0 });
+  assert.deepEqual(res, { mode: 'replace', created: 43, updated: 0, merged: 0, steam: { id: false, key: 'none' } });
   assert.deepEqual(byId(await db.getAllGames()), before);
   await db.clearGames();
 });
@@ -211,7 +211,7 @@ test('backup/mesclar: importar o mesmo backup de novo não altera nada (idempote
   const blob = await backup.exportBackup();
   const before = byId(await db.getAllGames());
   const res = await backup.importBackup(blob, 'merge');
-  assert.deepEqual(res, { mode: 'merge', created: 0, updated: 43, merged: 0 });
+  assert.deepEqual(res, { mode: 'merge', created: 0, updated: 43, merged: 0, steam: { id: false, key: 'none' } });
   assert.deepEqual(byId(await db.getAllGames()), before);
   await db.clearGames();
 });
@@ -224,7 +224,7 @@ test('backup/mesclar: importBackup grava novos e atualizados e mantém o lastSte
   const file = { app: 'gamedex', schemaVersion: 1, exportedAt: NOW, meta: { lastSteamSync: '2026-10-01T00:00:00.000Z' },
     games: [{ ...b, notes: 'do arquivo' }, mk('Cccccc')] };
   const res = await backup.importBackup(JSON.stringify(file), 'merge');
-  assert.deepEqual(res, { mode: 'merge', created: 1, updated: 1, merged: 0 });
+  assert.deepEqual(res, { mode: 'merge', created: 1, updated: 1, merged: 0, steam: { id: false, key: 'none' } });
   assert.equal((await db.getAllGames()).length, 3);
   assert.equal((/** @type {any} */ (await db.getGame(b.id))).notes, 'do arquivo');
   assert.equal(await db.getMeta('lastSteamSync'), '2026-10-05T00:00:00.000Z');
@@ -376,4 +376,51 @@ test('backup: applyMerge + exportar guardam o merge de importadores (integraçã
   await backup.importBackup(blob, 'replace');
   assert.deepEqual(byId(await db.getAllGames()), before);
   await db.clearGames();
+});
+
+test('backup/chave: sem opções a chave Steam nunca entra; o SteamID entra', async () => {
+  await db.clearGames();
+  await db.setMeta('steamId', '76561198000000001');
+  await db.setMeta('steamKey', 'ABCDEF0123456789ABCDEF0123456789');
+  const text = await (await backup.exportBackup()).text();
+  assert.ok(!text.includes('ABCDEF0123456789') && !text.includes('steamKeyEnc'), 'chave vazou');
+  assert.equal(JSON.parse(text).meta.steamId, '76561198000000001');
+  assert.equal(await backup.backupHasKey(text), false);
+  await db.setMeta('steamId', null); await db.setMeta('steamKey', null);
+});
+
+test('backup/chave: cifrada com senha, vai e volta; senha errada não grava nada; sem senha importa sem a chave', async () => {
+  const KEY = 'ABCDEF0123456789ABCDEF0123456789';
+  await db.clearGames();
+  await db.putGames(sample());
+  await db.setMeta('steamId', '76561198000000001');
+  await db.setMeta('steamKey', KEY);
+  const text = await (await backup.exportBackup({ includeKey: true, password: 'senha-forte-123' })).text();
+  assert.ok(!text.includes(KEY), 'chave em texto puro no arquivo');
+  assert.equal(await backup.backupHasKey(text), true);
+  await assert.rejectsCode(() => backup.exportBackup({ includeKey: true, password: '' }), 'bad_request');
+
+  // PC novo: banco vazio, senha errada → nada é gravado
+  await db.clearGames(); await db.setMeta('steamId', null); await db.setMeta('steamKey', null);
+  await assert.rejectsCode(() => backup.importBackup(text, 'replace', { password: 'errada' }), 'backup_password');
+  assert.equal((await db.getAllGames()).length, 0);
+  assert.equal(await db.getMeta('steamKey'), null);
+
+  // sem senha: jogos e SteamID voltam, a chave não
+  let res = await backup.importBackup(text, 'replace');
+  assert.equal(res.steam.key, 'skipped');
+  assert.equal(await db.getMeta('steamId'), '76561198000000001');
+  assert.equal(await db.getMeta('steamKey'), null);
+
+  // senha certa: chave restaurada
+  res = await backup.importBackup(text, 'replace', { password: 'senha-forte-123' });
+  assert.deepEqual(res.steam, { id: true, key: 'restored' });
+  assert.equal(await db.getMeta('steamKey'), KEY);
+
+  // mesclar não sobrescreve a chave local
+  await db.setMeta('steamKey', 'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF');
+  res = await backup.importBackup(text, 'merge', { password: 'senha-forte-123' });
+  assert.equal(res.steam.key, 'skipped');
+  assert.equal(await db.getMeta('steamKey'), 'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF');
+  await db.clearGames(); await db.setMeta('steamId', null); await db.setMeta('steamKey', null);
 });
