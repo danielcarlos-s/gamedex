@@ -94,6 +94,14 @@ import { getGame, putGames } from './db.js';
 export const SCHEMA_VERSION = 1;
 /** @type {readonly Store[]} */
 export const STORES = Object.freeze(['steam', 'epic', 'gog', 'ubisoft', 'ea', 'amazon', 'other']);
+
+/**
+ * `id` de loja válido: uma das fixas ou uma loja criada pelo usuário (`c-` + 8 caracteres [a-z0-9], ver data/stores.js).
+ * Só confere o FORMATO; quem sabe quais lojas criadas existem é o registro (stores.js).
+ * @param {unknown} id
+ * @returns {boolean}
+ */
+export const isStoreId = (id) => (typeof id === 'string') && (STORES.includes(/** @type {any} */ (id)) || /^c-[a-z0-9]{8}$/.test(id));
 /** @type {readonly Status[]} */
 export const STATUSES = Object.freeze(['backlog', 'playing', 'paused', 'finished', 'completed', 'dropped']);
 /** @type {readonly Source[]} */
@@ -238,7 +246,7 @@ export function validateGame(g) {
     errors.push({ field: 'ownerships', code: 'csv_missing_store' });
   } else {
     g.ownerships.forEach((o, i) => {
-      if (!STORES.includes(o?.store)) errors.push({ field: `ownerships[${i}].store`, code: 'csv_invalid_store' });
+      if (!isStoreId(o?.store)) errors.push({ field: `ownerships[${i}].store`, code: 'csv_invalid_store' });
       if (!okOptionalNumber(o?.playtimeMinutes)) errors.push({ field: `ownerships[${i}].playtimeMinutes`, code: 'csv_invalid_number' });
     });
   }
@@ -258,7 +266,7 @@ export function validateGame(g) {
 function validateIncoming(inc) {
   if (!inc || typeof inc.title !== 'string' || normalizeTitle(inc.title) === '') return 'title_required';
   if (inc.store === undefined || inc.store === null || inc.store === '') return 'csv_missing_store';
-  if (!STORES.includes(inc.store)) return 'csv_invalid_store';
+  if (!isStoreId(inc.store)) return 'csv_invalid_store';
   if (inc.status !== undefined && inc.status !== null && !STATUSES.includes(inc.status)) return 'csv_invalid_status';
   if (!okRating(inc.rating)) return 'rating_range';
   for (const f of /** @type {const} */ (['playtimeMinutes', 'year', 'achievementsDone', 'achievementsTotal'])) {

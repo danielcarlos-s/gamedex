@@ -347,3 +347,23 @@ test('covers: searchCover aplica o filtro (principal vence os pacotes)', async (
     assert.deepEqual(r.map((i) => i.appid), [1]);
   });
 });
+
+test('csv/lojas: coluna store por linha (várias lojas num arquivo); vazia usa a loja padrão; nome de loja criada resolve', () => {
+  const ID = 'c-abcd1234';
+  const resolveStore = (/** @type {string} */ s) => (s.toLowerCase() === 'battle.net' ? ID : null);
+  const csv = 'title,store\nA,epic\nB,Battle.net\nC,\nD,xbox\n';
+  const { rows, errors } = parseCsv(csv, { defaultStore: 'gog', resolveStore });
+  assert.deepEqual(rows.map((r) => [r.title, r.store]), [['A', 'epic'], ['B', ID], ['C', 'gog']]);
+  assert.deepEqual(errors, [{ row: 5, code: 'csv_invalid_store' }]);
+  // sem loja padrão: linha vazia continua erro; nome de loja criada sem o resolvedor não é reconhecido
+  const sem = parseCsv('title,store\nC,\nB,Battle.net\n');
+  assert.deepEqual(sem.errors.map((e) => e.code), ['csv_missing_store', 'csv_invalid_store']);
+});
+test('csv/lojas: arquivo SEM a coluna store usa a loja padrão; sem padrão é erro de arquivo', () => {
+  const ok = parseCsv('title,year\nA,2020\nB,\n', { defaultStore: 'c-abcd1234' });
+  assert.deepEqual(ok.rows.map((r) => [r.title, r.store]), [['A', 'c-abcd1234'], ['B', 'c-abcd1234']]);
+  assert.equal(ok.errors.length, 0);
+  assert.deepEqual(parseCsv('title,year\nA,2020\n').errors, [{ row: 1, code: 'csv_missing_store' }]);
+  // loja padrão inválida é ignorada (não vira loja fantasma)
+  assert.deepEqual(parseCsv('title\nA\n', { defaultStore: 'xbox' }).errors, [{ row: 1, code: 'csv_missing_store' }]);
+});

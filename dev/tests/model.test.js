@@ -1,7 +1,7 @@
 // Testes do B1: normalizeTitle, createGame, validateGame, regras de merge 1–4. Funções puras: rodam em Node e no navegador.
 // A regra 5 (splitOwnership) e applyMerge tocam IndexedDB e ficam em db.test.js.
 import { test, assert } from '../test-lib.js';
-import { normalizeTitle, createGame, validateGame, planMerge, recalcTotals } from '../../js/data/model.js';
+import { normalizeTitle, createGame, validateGame, planMerge, recalcTotals, isStoreId } from '../../js/data/model.js';
 
 const NOW = '2026-10-12T12:00:00.000Z';
 const opts = { now: NOW };
@@ -228,4 +228,11 @@ test('merge: source da linha > options.source > csv', () => {
   assert.equal(p.toCreate[0].ownerships[0].source, 'api');
   assert.equal(p.toCreate[1].ownerships[0].source, 'csv');
   assert.equal(planMerge([], [{ title: 'B', store: 'gog' }], { ...opts, source: 'backup' }).toCreate[0].ownerships[0].source, 'backup');
+});
+
+test('model: isStoreId aceita as fixas e o formato de loja criada; recusa o resto', () => {
+  for (const ok of ['steam', 'other', 'c-abcd1234', 'c-0a1b2c3d']) assert.ok(isStoreId(ok), ok);
+  for (const bad of ['', 'xbox', 'c-abc', 'c-ABCD1234', 'c-abcd12345', null, undefined, 5]) assert.ok(!isStoreId(bad), String(bad));
+  assert.equal(validateGame(createGame({ title: 'X', ownerships: [{ store: 'c-abcd1234' }] })).ok, true);
+  assert.equal(validateGame(createGame({ title: 'X', ownerships: [{ store: 'xbox' }] })).ok, false);
 });

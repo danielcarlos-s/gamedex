@@ -3,6 +3,7 @@ import { icon } from '../icons.js';
 import { db } from '../data-source.js';
 import { downloadBackup, fsAccessSupported, getLinkStatus, linkFile, unlinkFile, reconnect, onAutoSave } from '../data/backup.js';
 import { openHelp } from './help-modal.js';
+import { CUSTOM_HUES, MAX_NAME, getCustomStores, createStore, updateStore, deleteStore } from '../data/stores.js';
 import { esc } from './grid.js';
 import { mountBackupImport } from './backup-flow.js';
 
@@ -20,11 +21,17 @@ export function mountSettings(root) {
   let steamId = '';
   let hasKey = false;
   let withKey = false;
+  let storeCounts = {};
+  let newHue = CUSTOM_HUES[0];
+  /** @type {Record<string, number>} matiz escolhido por loja, ainda não salvo */
+  const rowHue = {};
+  /** @type {Record<string, string>} nomes digitados e ainda não salvos (chave `new` ou id da loja) */
+  const nameDraft = {};
   let lastBackup = null;
   let gamesCount = 0;
   let link = 'unsupported';
   let auto = null;
-  let msg = { steam: null, workerUrl: null, backup: null, link: null };
+  let msg = { stores: null, steam: null, workerUrl: null, backup: null, link: null };
   let importing = false;
 
   async function load(repaint = true) {
@@ -32,7 +39,10 @@ export function mountSettings(root) {
       [workerUrl, lastBackup] = [(await db.getMeta('workerUrl')) || '', (await db.getMeta('lastBackupAt')) || null];
       steamId = (await db.getMeta('steamId')) || '';
       hasKey = !!(await db.getMeta('steamKey'));
-      gamesCount = (await db.getAllGames()).length;
+      const all = await db.getAllGames();
+      gamesCount = all.length;
+      storeCounts = {};
+      for (const g of all) for (const s of new Set((g.ownerships || []).map((o) => o.store))) storeCounts[s] = (storeCounts[s] || 0) + 1;
     } catch (e) { msg.backup = { error: e?.code || 'idb_unavailable' }; }
     link = fsAccessSupported() ? await getLinkStatus() : 'unsupported';
     if (!disposed && repaint) render();
@@ -63,6 +73,74 @@ export function mountSettings(root) {
         ${link === 'needs-permission' ? `<button type="button" class="btn btn--primary cut-a-8 is-chamfered" data-act="reconnect">${esc(t('settings.link.reconnect'))}</button>` : ''}
         ${link !== 'none' ? `<button type="button" class="btn cut-a-8 is-chamfered" data-act="unlink">${esc(t('settings.link.unlink'))}</button>` : ''}
       </div></section>`;
+  }
+
+  const swatches = (scope, cur) => `<div class="swatches" role="radiogroup" aria-label="${esc(t('settings.stores.color'))}">${CUSTOM_HUES.map((h, i) => `<button type="button" class="swatch cut-a-4 is-chamfered" role="radio" aria-checked="${h === cur}" data-act="swatch" data-scope="${esc(scope)}" data-hue="${h}" style="--h:${h}" aria-label="${esc(t('settings.stores.colorn', { n: i + 1 }))}"></button>`).join('')}</div>`;
+
+  function storesHtml() {
+    const rows = getCustomStores().map((s) => {
+      const n = storeCounts[s.id] || 0;
+      const hue = rowHue[s.id] ?? s.hue;
+      return `<div class="store-row stack" data-store-row="${esc(s.id)}">
+        <div class="row"><span class="chip chip--store chip--custom cut-a-4" style="--h:${hue}">${esc(nameDraft[s.id] ?? s.name)}</span>
+          <span class="t-hint">${esc(t(n === 1 ? 'settings.stores.count.one' : 'settings.stores.count', { n }))}</span></div>
+        <div class="field"><label class="field__label" for="st-${esc(s.id)}">${esc(t('settings.stores.name'))}</label>
+          <input id="st-${esc(s.id)}" class="input cut-a-6 is-chamfered" type="text" maxlength="${MAX_NAME}" autocomplete="off" data-store-name="${esc(s.id)}" value="${esc(nameDraft[s.id] ?? s.name)}"></div>
+        ${swatches(s.id, hue)}
+        <div class="row">
+          <button type="button" class="btn btn--primary cut-a-8 is-chamfered" data-act="store-save" data-id="${esc(s.id)}">${esc(t('common.save'))}</button>
+          <button type="button" class="btn cut-a-8 is-chamfered" data-act="store-delete" data-id="${esc(s.id)}" ${n ? `disabled title="${esc(t('settings.stores.inuse'))}"` : ''}>${icon('trash')}<span>${esc(t('settings.stores.delete'))}</span></button>
+        </div>
+        ${n ? `<p class="t-hint">${esc(t('settings.stores.inuse'))}</p>` : ''}
+      </div>`;
+    }).join('');
+    return `<section class="panel stack" data-role="stores">
+      <h2 class="t-section">${esc(t('settings.stores.title'))}</h2>
+      <p class="t-body measure">${esc(t('settings.stores.text'))}</p>
+      ${rows}
+      <div class="stack">
+        <h3 class="t-label">${esc(t('settings.stores.new'))}</h3>
+        <div class="field"><label class="field__label" for="st-new">${esc(t('settings.stores.name'))}</label>
+          <input id="st-new" class="input cut-a-6 is-chamfered" type="text" maxlength="${MAX_NAME}" autocomplete="off" data-store-name="new" value="${esc(nameDraft.new ?? '')}"></div>
+        ${swatches('new', newHue)}
+        ${note(msg.stores)}
+        <div class="row"><button type="button" class="btn btn--primary cut-a-8 is-chamfered" data-act="store-create">${icon('plus')}<span>${esc(t('settings.stores.create'))}</span></button></div>
+      </div></section>`;
+  }
+
+  /** Guarda o que foi digitado antes de redesenhar (trocar cor não pode apagar o nome em edição). */
+  function captureNames() {
+    root.querySelectorAll('[data-store-name]').forEach((el) => { nameDraft[el.dataset.storeName] = el.value; });
+  }
+
+  async function storeAction(a, b) {
+    captureNames();
+    msg.stores = null;
+    try {
+      if (a === 'swatch') {
+        const h = Number(b.dataset.hue);
+        if (b.dataset.scope === 'new') newHue = h; else rowHue[b.dataset.scope] = h;
+        render(`[data-act="swatch"][data-scope="${b.dataset.scope}"][data-hue="${h}"]`);
+        return;
+      }
+      if (a === 'store-create') {
+        const s = await createStore(nameDraft.new ?? '', newHue);
+        nameDraft.new = '';
+        msg.stores = { text: t('settings.stores.created', { name: s.name }) };
+      } else if (a === 'store-save') {
+        const id = b.dataset.id;
+        const s = await updateStore(id, { name: nameDraft[id], hue: rowHue[id] });
+        delete nameDraft[id]; delete rowHue[id];
+        msg.stores = { text: t('settings.stores.saved', { name: s.name }) };
+      } else if (a === 'store-delete') {
+        const id = b.dataset.id;
+        await deleteStore(id, await db.getAllGames());
+        delete nameDraft[id]; delete rowHue[id];
+        msg.stores = { text: t('settings.stores.deleted') };
+      }
+    } catch (e) { msg.stores = { error: e?.code || 'idb_unavailable' }; }
+    await load(false);
+    render(msg.stores?.error ? '#st-new' : null);
   }
 
   function render(focusSel) {
@@ -101,6 +179,8 @@ export function mountSettings(root) {
             <button type="button" class="btn btn--ghost cut-a-8 is-chamfered" data-act="steam-clear">${esc(t('settings.steam.clear'))}</button>
           </div>
         </form>
+
+        ${storesHtml()}
 
         <section class="panel stack">
           <h2 class="t-section">${esc(t('settings.backup.title'))}</h2>
@@ -170,6 +250,7 @@ export function mountSettings(root) {
     const b = e.target.closest('[data-act]');
     if (!b) return;
     const a = b.dataset.act;
+    if (a === 'swatch' || a === 'store-create' || a === 'store-save' || a === 'store-delete') { storeAction(a, b); return; }
     if (a === 'steam-clear') {
       Promise.all([db.setMeta('steamKey', null), db.setMeta('steamId', null)])
         .then(() => { steamId = ''; hasKey = false; msg.steam = { text: t('settings.steam.cleared') }; render('#s-steamid'); })

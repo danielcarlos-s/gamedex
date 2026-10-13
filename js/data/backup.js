@@ -4,10 +4,11 @@
 //
 // Formato: { "app": "gamedex", "schemaVersion": 1, "exportedAt": "ISO", "games": [...], "meta": { lastSteamSync } }
 // (sem handles, sem workerUrl, sem lastBackupAt). Campos opcionais em `meta` (aditivos, a versão do schema não muda):
-// `theme` ('light'|'dark'), `steamId` (público) e `steamKeyEnc` (chave da Steam API cifrada com senha; só quando o usuário pede).
+// `customStores` (lojas criadas pelo usuário), `theme` ('light'|'dark'), `steamId` (público) e `steamKeyEnc` (chave da Steam API cifrada com senha; só quando o usuário pede).
 
 import { getAllGames, getMeta, setMeta, putGames, replaceGames, onChange } from './db.js';
 import { encryptSecret, decryptSecret } from './keycrypt.js';
+import { restoreStores, loadStores, sanitizeStores } from './stores.js';
 import { SCHEMA_VERSION, STATUSES, validateGame, recalcTotals, normalizeTitle } from './model.js';
 
 /** @typedef {import('./model.js').Game} Game */
@@ -54,10 +55,12 @@ const nowIso = () => new Date().toISOString();
  * @returns {Promise<{app: string, schemaVersion: number, exportedAt: string, games: Game[], meta: Record<string, any>}>}
  */
 async function buildBackup(options = {}) {
-  const [games, lastSteamSync, steamId, steamKey, theme] = await Promise.all([getAllGames(), getMeta('lastSteamSync'), getMeta('steamId'), getMeta('steamKey'), getMeta('theme')]);
+  const [games, lastSteamSync, steamId, steamKey, theme, customStores] = await Promise.all([getAllGames(), getMeta('lastSteamSync'), getMeta('steamId'), getMeta('steamKey'), getMeta('theme'), getMeta('customStores')]);
   /** @type {Record<string, any>} */ const meta = { lastSteamSync };
   if (steamId) meta.steamId = steamId;
   if (theme === 'light' || theme === 'dark') meta.theme = theme;
+  const stores = sanitizeStores(customStores);
+  if (stores.length) meta.customStores = stores;
   if (options.includeKey && steamKey) meta.steamKeyEnc = await encryptSecret(steamKey, options.password || '');
   return { app: APP, schemaVersion: SCHEMA_VERSION, exportedAt: nowIso(), games, meta };
 }
@@ -102,7 +105,7 @@ export async function downloadBackup(options = {}) {
  * Lê e valida um arquivo de backup. Nada é gravado aqui.
  * Lança `backup_invalid` (JSON ilegível, não é do gamedex, jogo inválido) ou `backup_version` (versão mais nova).
  * @param {Blob|string} file
- * @returns {Promise<{games: Game[], lastSteamSync: string|null, steamId: string|null, steamKeyEnc: any, theme: 'light'|'dark'|null}>}
+ * @returns {Promise<{games: Game[], lastSteamSync: string|null, steamId: string|null, steamKeyEnc: any, theme: 'light'|'dark'|null, customStores: any}>}
  */
 async function readBackup(file) {
   let data;
@@ -129,6 +132,7 @@ async function readBackup(file) {
     steamId: typeof sid === 'string' && /^\d{17}$/.test(sid) ? sid : null,
     steamKeyEnc: keyEnc && typeof keyEnc === 'object' ? keyEnc : null,
     theme: data.meta?.theme === 'light' || data.meta?.theme === 'dark' ? data.meta.theme : null,
+    customStores: data.meta?.customStores,
   };
 }
 
@@ -273,7 +277,7 @@ export function planBackupMerge(existing, fileGames, now = nowIso()) {
  */
 export async function importBackup(file, mode, options = {}) {
   if (mode !== 'replace' && mode !== 'merge') throw { code: 'bad_request' };
-  const { games, lastSteamSync, steamId, steamKeyEnc, theme } = await readBackup(file);
+  const { games, lastSteamSync, steamId, steamKeyEnc, theme, customStores } = await readBackup(file);
   const plainKey = steamKeyEnc && options.password ? await decryptSecret(steamKeyEnc, options.password) : null;
   const steam = async () => {
     /** @type {{id: boolean, key: 'none'|'restored'|'skipped'}} */ const r = { id: false, key: steamKeyEnc ? 'skipped' : 'none' };
@@ -288,6 +292,9 @@ export async function importBackup(file, mode, options = {}) {
     return theme;
   };
 
+  // lojas criadas primeiro: os jogos importados podem usar o id delas
+  await loadStores();
+  await restoreStores(customStores, mode);
   if (mode === 'replace') {
     await replaceGames(games);
     if (lastSteamSync) await setMeta('lastSteamSync', lastSteamSync);

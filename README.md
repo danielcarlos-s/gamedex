@@ -47,6 +47,10 @@ A Steam Web API não tem CORS e a chave não pode ficar no site público. Por is
 
 **Sua própria conta Steam (outros usuários):** em **Ajustes → Sua conta Steam** cada pessoa informa o próprio SteamID e a própria chave da Steam API. Esses dados ficam só no navegador (IndexedDB local; não vão para o GitHub nem para o arquivo de backup) e seguem ao Worker apenas em cabeçalhos (`X-Steam-Key`, `X-Steam-Id`) na hora de sincronizar. O Worker não grava, não loga e não faz cache dessas credenciais. Sem isso preenchido, o app usa a conta padrão configurada nos secrets do Worker, se houver.
 
+**Lojas próprias:** além de Steam, Epic, GOG, Ubisoft Connect, EA app, Amazon Games e Outra, você cria lojas em **Ajustes → Lojas** (nome + uma cor da paleta). Dá para renomear e trocar a cor (o jogo não perde a ligação); só dá para excluir uma loja sem jogos. Elas aparecem nos filtros, nos selos dos cards e no formulário, e vão no backup. Com um filtro de loja ativo, **Adicionar jogo** já abre o formulário nessa loja.
+
+**CSV de jogos:** o CSV é um CSV de jogos comum; a loja vem da coluna `store` (por linha, pelo código ou pelo nome, inclusive de lojas que você criou), então **um arquivo pode ter várias lojas**. Em **Importar** há a **Loja padrão**: vale para as linhas sem loja ou para o arquivo inteiro se ele não tiver a coluna `store`. O preview mostra quantos jogos vêm de cada loja antes de você confirmar.
+
 **Tema claro/escuro:** o botão (sol/lua) na barra de cima alterna o tema. A escolha é lembrada neste navegador e **vai junto no backup** (campo `meta.theme`): ao restaurar um backup com "Substituir" o tema volta como estava; com "Mesclar" o tema atual é mantido.
 
 **Chave no backup (opcional):** ao exportar, marque "Incluir minha chave Steam, protegida por senha". A chave é cifrada no navegador (AES-256-GCM, chave derivada da sua senha por PBKDF2) e só abre com essa senha; ao importar o backup o app pede a senha para restaurá-la (sem senha, importa tudo menos a chave). O SteamID (público) sempre vai no backup. O arquivo vinculado (salvamento automático) nunca leva a chave.

@@ -2,7 +2,7 @@
 // Sem DOM e sem texto para o usuário: erros são `{ row, code }` (seção 6.4). `row` é a linha física do arquivo
 // onde o registro começa (cabeçalho = 1, primeiro jogo = 2), a mesma que o usuário vê na planilha.
 
-import { STORES, STATUSES, normalizeTitle } from '../data/model.js';
+import { isStoreId, STATUSES, normalizeTitle } from '../data/model.js';
 
 /** @typedef {import('../data/model.js').IncomingGame} IncomingGame */
 
@@ -156,14 +156,18 @@ function parseList(raw) {
 
 /**
  * Lê um CSV de jogos. Detecta `,`/`;`, aspas, BOM UTF-8 e CRLF. Aceita cabeçalho em PT ou EN e valores de
- * loja/status em PT ou EN, sem diferenciar maiúsculas/acentos. Obrigatórios: `title` e `store`.
+ * loja/status em PT ou EN, sem diferenciar maiúsculas/acentos. Obrigatório: `title`. A loja vem da coluna `store`
+ * (por linha, então um arquivo pode trazer várias lojas) ou, para linhas sem loja / arquivo sem a coluna, de
+ * `options.defaultStore`. `options.resolveStore(texto)` resolve nomes de lojas criadas pelo usuário.
  * Linhas inválidas vão para `errors` e não entram em `rows`; linhas totalmente vazias são ignoradas.
  * Erros de arquivo: `csv_empty` (sem nenhuma linha de dados) e `csv_missing_title`/`csv_missing_store`
  * na linha 1 quando a COLUNA obrigatória não existe no cabeçalho.
  * @param {string} text
+ * @param {{ defaultStore?: string, resolveStore?: (text: string) => string|null }} [options]
  * @returns {{rows: IncomingGame[], errors: {row: number, code: string}[]}}
  */
-export function parseCsv(text) {
+export function parseCsv(text, options = {}) {
+  const defaultStore = options.defaultStore && isStoreId(options.defaultStore) ? options.defaultStore : undefined;
   /** @type {IncomingGame[]} */ const rows = [];
   /** @type {{row: number, code: string}[]} */ const errors = [];
   const clean = String(text ?? '').replace(/^﻿/, '');
@@ -180,7 +184,7 @@ export function parseCsv(text) {
     if (canon && !col.has(canon)) col.set(canon, i);
   });
   if (!col.has('title')) errors.push({ row: header.line, code: 'csv_missing_title' });
-  if (!col.has('store')) errors.push({ row: header.line, code: 'csv_missing_store' });
+  if (!col.has('store') && !defaultStore) errors.push({ row: header.line, code: 'csv_missing_store' });
   if (errors.length) return { rows, errors };
 
   const dataRecords = data.filter((r) => r.cells.some((c) => c.trim() !== ''));
@@ -198,9 +202,15 @@ export function parseCsv(text) {
     if (!title || normalizeTitle(title) === '') { fail('csv_missing_title'); continue; }
 
     const storeRaw = get('store');
-    if (!storeRaw) { fail('csv_missing_store'); continue; }
-    const store = STORE_ALIASES[squash(storeRaw)];
-    if (!store || !STORES.includes(/** @type {any} */ (store))) { fail('csv_invalid_store'); continue; }
+    /** @type {string|null|undefined} */
+    let store;
+    if (!storeRaw) {
+      if (!defaultStore) { fail('csv_missing_store'); continue; }
+      store = defaultStore;
+    } else {
+      store = STORE_ALIASES[squash(storeRaw)] ?? options.resolveStore?.(storeRaw) ?? null;
+      if (!store || !isStoreId(store)) { fail('csv_invalid_store'); continue; }
+    }
 
     const statusRaw = get('status');
     let status;

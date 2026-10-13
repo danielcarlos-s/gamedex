@@ -1,9 +1,9 @@
 import { t, getLang, formatNumber } from '../i18n/index.js';
 import { icon } from '../icons.js';
-import { normalizeTitle } from '../data/model.js';
-import { gameStores, esc } from './grid.js';
+import { normalizeTitle, isStoreId } from '../data/model.js';
+import { allStoreIds } from '../data/stores.js';
+import { gameStores, esc, storeLabel } from './grid.js';
 
-export const STORE_ORDER = ['steam', 'epic', 'gog', 'ubisoft', 'ea', 'amazon', 'other'];
 export const STATUS_ORDER = ['backlog', 'playing', 'paused', 'finished', 'completed', 'dropped'];
 const SORTS = ['name', 'time', 'last', 'added'];
 const DEFAULT_DIR = { name: 'asc', time: 'desc', last: 'desc', added: 'desc' };
@@ -18,7 +18,7 @@ export function parseState(query) {
   const played = query.get('played');
   return {
     q: query.get('q') || '',
-    stores: new Set(list(query.get('stores')).filter((s) => STORE_ORDER.includes(s))),
+    stores: new Set(list(query.get('stores')).filter((s) => isStoreId(s))),
     status: new Set(list(query.get('status')).filter((s) => STATUS_ORDER.includes(s))),
     tags: new Set(list(query.get('tags'))),
     genres: new Set(list(query.get('genres'))),
@@ -123,7 +123,7 @@ export function buildPanel(root, games, state, onChange) {
   const tags = [...tagSet].sort((a, b) => a.localeCompare(b));
   const genres = [...genreSet].sort((a, b) => a.localeCompare(b));
   const present = (list_, key, fn) => list_.filter((x) => games.some((g) => fn(g, x)));
-  const stores = present(STORE_ORDER, 'stores', (g, s) => gameStores(g).includes(s));
+  const stores = present(allStoreIds(), 'stores', (g, s) => gameStores(g).includes(s));
 
   const moreOpen = false; // sempre fechado ao carregar; o contador do botão mostra se há filtros ativos
   root.innerHTML = `
@@ -150,7 +150,7 @@ export function buildPanel(root, games, state, onChange) {
         </button>
       </div>
       <div id="f-adv" class="stack" hidden>
-      ${group('filters.stores', stores.map((s) => chipBtn('data-store', s, t('store.' + s))).join(''))}
+      ${group('filters.stores', stores.map((s) => chipBtn('data-store', s, storeLabel(s))).join(''))}
       ${group('filters.status', STATUS_ORDER.map((s) => chipBtn('data-status', s, t('status.' + s))).join(''))}
       <div class="fgroup">
         <p class="t-label">${esc(t('filters.show'))}</p>

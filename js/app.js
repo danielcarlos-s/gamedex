@@ -1,6 +1,7 @@
 import { initI18n, applyI18n, onLangChange, t } from './i18n/index.js';
 import { initLangToggle } from './lang-toggle.js';
 import { initThemeToggle } from './theme.js';
+import { loadStores } from './data/stores.js';
 import { icon } from './icons.js';
 import { mountLibrary } from './ui/library.js';
 import { mountGameForm } from './ui/game-form.js';
@@ -49,9 +50,9 @@ function renderLibrary(_params, query) {
   return root;
 }
 
-function renderGame({ id }) {
+function renderGame({ id }, query) {
   const root = el('<div class="view"></div>');
-  const mounted = mountGameForm(root, id);
+  const mounted = mountGameForm(root, id, { store: query?.get('store') });
   disposeView = () => mounted.then((dispose) => dispose());
   return root;
 }
@@ -108,4 +109,5 @@ initLangToggle();
 initThemeToggle();
 onLangChange(() => render());
 window.addEventListener('hashchange', () => render({ moveFocus: true }));
+await loadStores(); // lojas criadas pelo usuário precisam estar prontas antes da primeira tela
 render();

@@ -1,21 +1,37 @@
 import { t, formatPlaytime } from '../i18n/index.js';
 import { icon } from '../icons.js';
-
-const STORE_ORDER = ['steam', 'epic', 'gog', 'ubisoft', 'ea', 'amazon', 'other'];
+import { STORES } from '../data/model.js';
+import { allStoreIds, customStore } from '../data/stores.js';
 
 /** Escapa texto para HTML/atributos. */
 export function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
-/** Lojas distintas do jogo, na ordem canônica. */
+/**
+ * Nome da loja para mostrar: fixa → texto traduzido; criada pelo usuário → o nome dela; id criado que o registro
+ * não conhece (ex.: backup sem a definição) → "Outra".
+ * @param {string} id
+ * @returns {string}
+ */
+export function storeLabel(id) {
+  const c = customStore(id);
+  if (c) return c.name;
+  return STORES.includes(/** @type {any} */ (id)) ? t('store.' + id) : t('store.other');
+}
+
+/** Lojas distintas do jogo, na ordem de exibição (fixas, criadas, "Outra"); ids desconhecidos vão no fim. */
 export function gameStores(game) {
   const set = new Set((game.ownerships || []).map((o) => o.store));
-  return STORE_ORDER.filter((s) => set.has(s));
+  const ordered = allStoreIds().filter((s) => set.has(s));
+  return [...ordered, ...[...set].filter((s) => !ordered.includes(s))];
 }
 
 export function storeChip(store) {
-  return `<span class="chip chip--store chip--${store} cut-a-4">${esc(t('store.' + store))}</span>`;
+  const c = customStore(store);
+  if (c) return `<span class="chip chip--store chip--custom cut-a-4" style="--h:${c.hue}">${esc(c.name)}</span>`;
+  const known = STORES.includes(/** @type {any} */ (store)) ? store : 'other';
+  return `<span class="chip chip--store chip--${known} cut-a-4">${esc(storeLabel(store))}</span>`;
 }
 
 export function statusChip(status) {

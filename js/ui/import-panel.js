@@ -6,7 +6,8 @@ import { fetchOwned, parseSteamCache } from '../importers/steam.js';
 import { parseCsv, templateCsv } from '../importers/csv.js';
 import { queueCovers } from '../importers/covers.js';
 import { WORKER_URL } from '../config.js';
-import { esc } from './grid.js';
+import { esc, storeLabel, storeChip } from './grid.js';
+import { allStoreIds, customStoreFromText } from '../data/stores.js';
 import { mountBackupImport } from './backup-flow.js';
 
 const MAX_ERRORS_SHOWN = 100;
@@ -23,6 +24,7 @@ export function mountImport(root) {
   let doneInfo = null;
   let backupFile = null;
   let lastSync = null;
+  let defaultStore = ''; // loja usada nas linhas do CSV sem loja (ou em todas, se o CSV não tiver a coluna)
   let covers = { missing: 0, running: false, done: 0, total: 0, result: null, error: null, choice: null };
   let abort = null;
   let disposed = false;
@@ -54,6 +56,12 @@ export function mountImport(root) {
       <section class="panel stack">
         <h2 class="t-section">${esc(t('import.file.title'))}</h2>
         <p class="t-body measure">${esc(t('import.file.text'))}</p>
+        <div class="field"><label class="field__label" for="imp-store">${esc(t('import.store.label'))}</label>
+          <select id="imp-store" class="input cut-a-6 is-chamfered">
+            <option value="">${esc(t('import.store.none'))}</option>
+            ${allStoreIds().map((id) => `<option value="${esc(id)}" ${id === defaultStore ? 'selected' : ''}>${esc(storeLabel(id))}</option>`).join('')}
+          </select>
+          <p class="t-hint measure">${esc(t('import.store.hint'))}</p></div>
         <div class="row">
           <input id="imp-file" class="visually-hidden" type="file" accept=".csv,.json,text/csv,application/json">
           <label for="imp-file" class="btn cut-a-8 is-chamfered" data-role="file-label" tabindex="0" role="button">${icon('upload')}<span>${esc(t('import.file.button'))}</span></label>
@@ -80,6 +88,8 @@ export function mountImport(root) {
       <h2 class="t-section">${esc(t('import.preview.title'))}</h2>
       <p class="t-body measure">${esc(t('import.preview.text'))}</p>
       <div class="stats">${stat('new', c.new)}${stat('updated', c.updated)}${stat('merged', c.merged)}${stat('invalid', invalid)}</div>
+      ${pending.byStore?.size ? `<div class="stack"><h3 class="t-label">${esc(t('import.preview.stores'))}</h3>
+        <div class="row">${[...pending.byStore].map(([id, n]) => `<span class="row">${storeChip(id)}<span class="t-data">${esc(formatNumber(n))}</span></span>`).join('')}</div></div>` : ''}
       ${nothing ? `<p class="t-body" role="status">${esc(t('import.preview.nothing'))}</p>` : ''}
       ${errs.length ? `<div class="stack"><h3 class="t-label">${esc(t('import.errors.title'))}</h3>
         <ul class="errlist">${shown.map((e) => `<li><span class="t-data">${e.row != null ? esc(t('import.errors.row', { row: e.row })) : '—'}</span> ${esc(t('err.' + e.code))}</li>`).join('')}</ul>
@@ -148,7 +158,10 @@ export function mountImport(root) {
   // ---------- fluxo ----------
   async function buildPreview(incoming, parseErrors, source, steam = false) {
     const existing = await db.getAllGames();
-    pending = { plan: planMerge(existing, incoming, { source }), parseErrors, source, steam };
+    /** @type {Map<string, number>} linhas válidas por loja (o preview mostra de onde vem cada uma) */
+    const byStore = new Map();
+    for (const r of incoming) byStore.set(r.store, (byStore.get(r.store) || 0) + 1);
+    pending = { plan: planMerge(existing, incoming, { source }), parseErrors, source, steam, byStore };
     phase = 'preview';
   }
 
@@ -178,7 +191,7 @@ export function mountImport(root) {
         if (json?.steam_cache) { await buildPreview(parseSteamCache(json), [], 'backup'); }
         else throw { code: 'backup_invalid' };
       } else {
-        const { rows, errors } = parseCsv(text);
+        const { rows, errors } = parseCsv(text, { defaultStore: defaultStore || undefined, resolveStore: customStoreFromText });
         if (!rows.length && errors.length) throw { code: errors[0].code };
         await buildPreview(rows, errors, 'csv');
       }
@@ -253,6 +266,7 @@ export function mountImport(root) {
     else if (a === 'cover-skip') { const ch = covers.choice; covers.choice = null; ch.resolve(null); render('[data-act="cover-cancel"]'); }
   });
   root.addEventListener('change', (e) => {
+    if (e.target.id === 'imp-store') { defaultStore = e.target.value; return; }
     if (e.target.id === 'imp-file' && e.target.files[0]) onFile(e.target.files[0]);
   });
   // o rótulo-botão do arquivo é focável: Enter/Espaço abrem o seletor

@@ -28,6 +28,9 @@
   --store-ea: oklch(0.78 0.115 55);
   --store-amazon: oklch(0.78 0.115 130);
   --store-other: var(--text-muted);
+  /* Lojas criadas pelo usuário: mesmo brilho/croma das fixas, matiz vem do `--h` da loja (paleta fixa) */
+  --store-l: 0.78;
+  --store-c: 0.115;
 
   /* Tipografia */
   --font-display: 'Rajdhani', 'Arial Narrow', sans-serif;
@@ -73,6 +76,8 @@
   --store-ubisoft: oklch(0.50 0.105 165);
   --store-ea: oklch(0.50 0.105 55);
   --store-amazon: oklch(0.50 0.105 130);
+  --store-l: 0.50;
+  --store-c: 0.105;
   --overlay: rgba(26, 24, 22, 0.55);
 }
 

@@ -453,3 +453,56 @@ test('backup/tema: o tema escolhido vai no backup e volta; mesclar não troca o 
   assert.equal(await db.getMeta('theme'), null);
   await db.clearGames();
 });
+
+test('lojas: criar, renomear (id fixo), nomes únicos, excluir só se vazia', async () => {
+  const stores = await import('../../js/data/stores.js');
+  await db.clearGames(); await db.setMeta('customStores', null); await stores.loadStores();
+  const bn = await stores.createStore('  Battle.net ', 195);
+  assert.ok(/^c-[a-z0-9]{8}$/.test(bn.id) && bn.name === 'Battle.net' && bn.hue === 195);
+  assert.deepEqual(stores.allStoreIds().slice(-2), [bn.id, 'other']);
+  await assert.rejectsCode(() => stores.createStore('battle NET', 85), 'store_name_taken');
+  await assert.rejectsCode(() => stores.createStore('Epic', 85), 'store_name_taken');
+  await assert.rejectsCode(() => stores.createStore('Outra', 85), 'store_name_taken');
+  await assert.rejectsCode(() => stores.createStore('   ', 85), 'store_name_required');
+  await assert.rejectsCode(() => stores.createStore('x'.repeat(31), 85), 'store_name_long');
+  await assert.rejectsCode(() => stores.createStore('Xbox', 999), 'bad_request');
+  assert.equal(stores.customStoreFromText('BATTLE.NET'), bn.id);
+  assert.equal(stores.customStoreFromText(bn.id), bn.id);
+  assert.equal(stores.customStoreFromText('xbox'), null);
+
+  const r = await stores.updateStore(bn.id, { name: 'Blizzard', hue: 340 });
+  assert.deepEqual(r, { id: bn.id, name: 'Blizzard', hue: 340 });
+  assert.equal(await stores.updateStore(bn.id, { name: 'Blizzard' }).then((x) => x.id), bn.id, 'manter o próprio nome é permitido');
+  await assert.rejectsCode(() => stores.updateStore('c-zzzzzzzz', { name: 'Y' }), 'not_found');
+
+  await db.putGames([createGame({ title: 'Diablo', ownerships: [{ store: bn.id }] })]);
+  await assert.rejectsCode(async () => stores.deleteStore(bn.id, await db.getAllGames()), 'store_in_use');
+  await db.clearGames();
+  await stores.deleteStore(bn.id, await db.getAllGames());
+  assert.equal(stores.getCustomStores().length, 0);
+  assert.equal(await db.getMeta('customStores'), null);
+});
+
+test('backup/lojas: lojas criadas vão no arquivo e voltam; mesclar só acrescenta as que faltam', async () => {
+  const stores = await import('../../js/data/stores.js');
+  await db.clearGames(); await db.setMeta('customStores', null); await stores.loadStores();
+  const bn = await stores.createStore('Battle.net', 195);
+  await db.putGames([createGame({ title: 'Diablo IV', ownerships: [{ store: bn.id, playtimeMinutes: 30 }] })]);
+  const text = await (await backup.exportBackup()).text();
+  assert.deepEqual(JSON.parse(text).meta.customStores, [{ id: bn.id, name: 'Battle.net', hue: 195 }]);
+
+  // PC novo: sem lojas e sem jogos → "Substituir" restaura as duas coisas
+  await db.clearGames(); await db.setMeta('customStores', null); await stores.loadStores();
+  assert.equal(stores.getCustomStores().length, 0);
+  await backup.importBackup(text, 'replace');
+  assert.deepEqual(stores.getCustomStores(), [{ id: bn.id, name: 'Battle.net', hue: 195 }]);
+  assert.equal((await db.getAllGames())[0].ownerships[0].store, bn.id);
+
+  // mesclar: não duplica nem renomeia a que já existe; traz a que falta
+  await stores.updateStore(bn.id, { name: 'Blizzard' });
+  const extra = JSON.parse(text);
+  extra.meta.customStores.push({ id: 'c-aaaa1111', name: 'itch.io', hue: 85 }, { id: 'xx', name: 'lixo', hue: 1 }, { id: 'c-bbbb2222', name: 'blizzard', hue: 85 });
+  await backup.importBackup(JSON.stringify(extra), 'merge');
+  assert.deepEqual(stores.getCustomStores().map((s) => s.name), ['Blizzard', 'itch.io']);
+  await db.clearGames(); await db.setMeta('customStores', null); await stores.loadStores();
+});

@@ -91,6 +91,7 @@
 .chip--ea { --store: var(--store-ea); }
 .chip--amazon { --store: var(--store-amazon); }
 .chip--other { --store: var(--store-other); }
+.chip--custom { --store: oklch(var(--store-l) var(--store-c) var(--h, 250)); }
 .chip--playing { color: var(--accent-text); border-color: var(--accent); }
 
 /* Chip de filtro (botão, alvo 44px) */
@@ -260,3 +261,10 @@ dialog.help::backdrop { background-color: var(--overlay); }
 .theme-switching, .theme-switching *, .theme-switching *::before, .theme-switching *::after { transition: none !important; }
 .seg-toggle { display: inline-flex; }
 .seg-toggle .icon { width: 20px; height: 20px; }
+
+/* ---- Lojas criadas (Ajustes) ---- */
+.swatches { display: flex; flex-wrap: wrap; gap: var(--sp-3); }
+.swatch { width: 44px; height: 44px; padding: 0; background-color: oklch(var(--store-l) var(--store-c) var(--h, 250)); border: 2px solid transparent; cursor: pointer; }
+.swatch[aria-checked="true"] { border-color: var(--text-primary); outline: 2px solid var(--bg); outline-offset: -4px; }
+.store-row { padding-block: var(--sp-7); border-top: 1px solid var(--border); }
+.store-row:first-of-type { border-top: 0; }

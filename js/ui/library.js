@@ -9,7 +9,7 @@ const shell = () => `
     <h1 class="t-heading" tabindex="-1" data-i18n="library.title"></h1>
     <div class="row">
       <p class="t-data" data-role="count"></p>
-      <a class="btn btn--primary cut-a-8 is-chamfered" href="#/game/new">${icon('plus')}<span>${esc(t('library.add'))}</span></a>
+      <a class="btn btn--primary cut-a-8 is-chamfered" href="#/game/new" data-role="add">${icon('plus')}<span>${esc(t('library.add'))}</span></a>
     </div>
   </div>
   <hr class="divider">
@@ -45,6 +45,7 @@ export function mountLibrary(root, filtersRoot, query) {
   applyI18n(root);
   const countEl = root.querySelector('[data-role="count"]');
   const body = root.querySelector('[data-role="body"]');
+  const addLink = root.querySelector('[data-role="add"]');
   bindCoverFallback(body);
   const state = parseState(query);
   let disposed = false;
@@ -58,6 +59,8 @@ export function mountLibrary(root, filtersRoot, query) {
     const { result, counts } = runFilters(games, state);
     sortGames(result, state);
     countEl.textContent = countText(games.length);
+    // com UMA loja filtrada, "Adicionar jogo" já abre o formulário nessa loja
+    addLink.href = state.stores.size === 1 ? `#/game/new?store=${encodeURIComponent([...state.stores][0])}` : '#/game/new';
     update?.(state, counts, result.length, games.length);
     if (!games.length) { body.innerHTML = emptyHtml(); return; }
     if (!result.length) {

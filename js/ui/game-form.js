@@ -1,11 +1,12 @@
 import { t, formatDate } from '../i18n/index.js';
 import { icon } from '../icons.js';
 import { db } from '../data-source.js';
-import { createGame, createOwnership, normalizeTitle, recalcTotals, validateGame, splitOwnership } from '../data/model.js';
+import { createGame, createOwnership, normalizeTitle, recalcTotals, validateGame, splitOwnership, isStoreId } from '../data/model.js';
+import { allStoreIds } from '../data/stores.js';
 import { searchCover } from '../importers/covers.js';
 import { WORKER_URL } from '../config.js';
-import { esc, bindCoverFallback } from './grid.js';
-import { STORE_ORDER, STATUS_ORDER } from './filters.js';
+import { esc, bindCoverFallback, storeLabel } from './grid.js';
+import { STATUS_ORDER } from './filters.js';
 
 const csv = (s) => s.split(',').map((x) => x.trim()).filter(Boolean);
 const num = (s) => (String(s).trim() === '' ? null : Number(s));
@@ -26,7 +27,7 @@ const attrs = (id, errKey, errors) => `id="${id}"${errors[errKey] ? ` aria-inval
  * @param {string} id
  * @returns {Promise<() => void>} limpeza
  */
-export async function mountGameForm(root, id) {
+export async function mountGameForm(root, id, opts = {}) {
   const isNew = id === 'new';
   let draft;
   let disposed = false;
@@ -37,7 +38,7 @@ export async function mountGameForm(root, id) {
 
   root.innerHTML = `<div class="state panel panel--live" role="status"><div class="loader"></div><span class="t-label">${esc(t('state.loading'))}</span></div>`;
   try {
-    if (isNew) draft = createGame({ ownerships: [{ store: 'other', source: 'manual' }] });
+    if (isNew) draft = createGame({ ownerships: [{ store: isStoreId(opts.store) ? opts.store : 'other', source: 'manual' }] });
     else draft = await db.getGame(id);
   } catch (e) {
     root.innerHTML = errorView(e?.code || 'idb_unavailable');
@@ -152,7 +153,7 @@ export async function mountGameForm(root, id) {
       <div class="own" data-own="${i}">
         <div class="field"><label class="field__label" for="own-${i}-store">${esc(t('game.store.select'))}</label>
           <select ${attrs(`own-${i}-store`, `own.${i}.store`, errors)} class="input cut-a-6 is-chamfered" data-f="store">
-            ${STORE_ORDER.map((s) => `<option value="${s}" ${s === o.store ? 'selected' : ''}>${esc(t('store.' + s))}</option>`).join('')}</select>
+            ${[...allStoreIds(), ...(allStoreIds().includes(o.store) ? [] : [o.store])].map((s) => `<option value="${esc(s)}" ${s === o.store ? 'selected' : ''}>${esc(storeLabel(s))}</option>`).join('')}</select>
           ${errors[`own.${i}.store`] ? `<p class="field__error" id="own-${i}-store-err">${esc(t('err.' + errors[`own.${i}.store`]))}</p>` : ''}</div>
         <div class="field"><label class="field__label" for="own-${i}-play">${esc(t('game.store.playtime'))}</label>
           <input ${attrs(`own-${i}-play`, `own.${i}.playtime`, errors)} class="input cut-a-6 is-chamfered" data-f="playtime" type="number" min="0" step="1" inputmode="numeric" value="${o.playtimeMinutes ?? ''}">
@@ -309,7 +310,7 @@ export async function mountGameForm(root, id) {
     'link-remove': (b) => { sync(); draft.links.splice(Number(b.dataset.i), 1); render('[data-action="link-add"]'); },
     'own-add': () => {
       sync();
-      const free = STORE_ORDER.find((s) => !draft.ownerships.some((o) => o.store === s)) || 'other';
+      const free = allStoreIds().find((s) => !draft.ownerships.some((o) => o.store === s)) || 'other';
       draft.ownerships.push(createOwnership({ store: free, source: 'manual' }));
       render(`#own-${draft.ownerships.length - 1}-store`);
     },
