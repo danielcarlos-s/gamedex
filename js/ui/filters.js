@@ -1,13 +1,13 @@
 import { t, getLang, formatNumber } from '../i18n/index.js';
 import { icon } from '../icons.js';
 import { normalizeTitle, isStoreId } from '../data/model.js';
-import { allStoreIds } from '../data/stores.js';
-import { gameStores, esc, storeLabel } from './grid.js';
+import { gameStores, esc } from './grid.js';
+import { mountStoreTabs } from './store-tabs.js';
 
 export const STATUS_ORDER = ['backlog', 'playing', 'paused', 'finished', 'completed', 'dropped'];
 const SORTS = ['name', 'time', 'last', 'added'];
 const DEFAULT_DIR = { name: 'asc', time: 'desc', last: 'desc', added: 'desc' };
-const DIMS = ['q', 'stores', 'status', 'tags', 'genres', 'fav', 'multi', 'played'];
+const DIMS = ['q', 'store', 'status', 'tags', 'genres', 'fav', 'multi', 'played'];
 
 const list = (v) => (v ? v.split(',').filter(Boolean) : []);
 
@@ -18,7 +18,8 @@ export function parseState(query) {
   const played = query.get('played');
   return {
     q: query.get('q') || '',
-    stores: new Set(list(query.get('stores')).filter((s) => isStoreId(s))),
+    // aba de loja (uma só); links antigos `?stores=a,b` caem na primeira loja válida
+    store: [query.get('store'), ...list(query.get('stores'))].find((s) => s && isStoreId(s)) || null,
     status: new Set(list(query.get('status')).filter((s) => STATUS_ORDER.includes(s))),
     tags: new Set(list(query.get('tags'))),
     genres: new Set(list(query.get('genres'))),
@@ -34,7 +35,7 @@ export function parseState(query) {
 export function stateToHash(s) {
   const p = new URLSearchParams();
   if (s.q) p.set('q', s.q);
-  if (s.stores.size) p.set('stores', [...s.stores].join(','));
+  if (s.store) p.set('store', s.store);
   if (s.status.size) p.set('status', [...s.status].join(','));
   if (s.tags.size) p.set('tags', [...s.tags].join(','));
   if (s.genres.size) p.set('genres', [...s.genres].join(','));
@@ -49,7 +50,7 @@ export function stateToHash(s) {
 
 /** Há algum filtro ativo (ordenação não conta)? */
 export function hasActiveFilters(s) {
-  return !!(s.q || s.stores.size || s.status.size || s.tags.size || s.genres.size || s.fav || s.multi || s.played);
+  return !!(s.q || s.store || s.status.size || s.tags.size || s.genres.size || s.fav || s.multi || s.played);
 }
 
 /**
@@ -59,12 +60,12 @@ export function hasActiveFilters(s) {
 export function runFilters(games, s) {
   const qKey = normalizeTitle(s.q);
   const result = [];
-  const counts = { stores: {}, status: {}, tags: {}, genres: {}, fav: 0, multi: 0, played: { yes: 0, no: 0 } };
+  const counts = { all: 0, stores: {}, status: {}, tags: {}, genres: {}, fav: 0, multi: 0, played: { yes: 0, no: 0 } };
   for (const g of games) {
     const gs = gameStores(g);
     const pass = {
       q: !qKey || (g.titleKey || normalizeTitle(g.title)).includes(qKey),
-      stores: !s.stores.size || gs.some((x) => s.stores.has(x)),
+      store: !s.store || gs.includes(s.store),
       status: !s.status.size || s.status.has(g.status),
       tags: !s.tags.size || (g.tags || []).some((x) => s.tags.has(x)),
       genres: !s.genres.size || (g.genres || []).some((x) => s.genres.has(x)),
@@ -78,7 +79,8 @@ export function runFilters(games, s) {
     if (fails > 1) continue;
     const ok = (d) => fails === 0 || failed === d;
     if (fails === 0) result.push(g);
-    if (ok('stores')) gs.forEach((x) => { counts.stores[x] = (counts.stores[x] || 0) + 1; });
+    if (ok('store')) counts.all++;
+    if (ok('store')) gs.forEach((x) => { counts.stores[x] = (counts.stores[x] || 0) + 1; });
     if (ok('status')) counts.status[g.status] = (counts.status[g.status] || 0) + 1;
     if (ok('tags')) (g.tags || []).forEach((x) => { counts.tags[x] = (counts.tags[x] || 0) + 1; });
     if (ok('genres')) (g.genres || []).forEach((x) => { counts.genres[x] = (counts.genres[x] || 0) + 1; });
@@ -112,18 +114,24 @@ const chipBtn = (attr, value, label) =>
 const group = (labelKey, inner) =>
   `<div class="fgroup"><p class="t-label">${esc(t(labelKey))}</p><div class="row">${inner}</div></div>`;
 
+const SORT_OPTIONS = SORTS.flatMap((k) => ['asc', 'desc'].map((d) => `${k}:${d}`));
+
 /**
- * Monta o painel de filtros em `root`. `onChange(state)` é chamado a cada mudança do usuário.
- * Devolve `update(state, counts)` que atualiza estados/contagens sem recriar os controles.
+ * Monta o painel de filtros em `root`: busca + botão "Filtros", abas de loja, filtros avançados (fechados),
+ * e a barra de resultados (contagem, limpar, ordenação). `onChange(state)` é chamado a cada mudança do usuário.
+ * Devolve `{ update(state, counts, shown, total), destroy() }`; update atualiza estados/contagens sem recriar controles.
+ * @param {HTMLElement} root
+ * @param {any[]} games
+ * @param {any} state
+ * @param {(s: any) => void} onChange
+ * @param {{ panelId: string }} opts id da grade controlada pelas abas
  */
-export function buildPanel(root, games, state, onChange) {
+export function buildPanel(root, games, state, onChange, { panelId }) {
   const tagSet = new Set();
   const genreSet = new Set();
   games.forEach((g) => { (g.tags || []).forEach((x) => tagSet.add(x)); (g.genres || []).forEach((x) => genreSet.add(x)); });
   const tags = [...tagSet].sort((a, b) => a.localeCompare(b));
   const genres = [...genreSet].sort((a, b) => a.localeCompare(b));
-  // todas as lojas, mesmo sem jogos (como os status): assim dá para ver que existem e filtrar/adicionar nelas
-  const stores = allStoreIds();
 
   const moreOpen = false; // sempre fechado ao carregar; o contador do botão mostra se há filtros ativos
   root.innerHTML = `
@@ -136,21 +144,12 @@ export function buildPanel(root, games, state, onChange) {
             <input id="f-q" class="input cut-a-6 is-chamfered" type="search" autocomplete="off" placeholder="${esc(t('filters.search.placeholder'))}" value="${esc(state.q)}">
           </div>
         </div>
-        <div class="field">
-          <label class="field__label" for="f-sort">${esc(t('filters.sort'))}</label>
-          <div class="row">
-            <select id="f-sort" class="input cut-a-6 is-chamfered">${SORTS.map((k) => `<option value="${k}">${esc(t('sort.' + k))}</option>`).join('')}</select>
-            <button class="btn btn--icon cut-a-6 is-chamfered" type="button" data-role="dir" aria-pressed="false">${icon('chevron', { className: 'dir-icon' })}</button>
-          </div>
-        </div>
-      </div>
-      <div class="fgroup">
         <button class="btn cut-a-8 is-chamfered" type="button" data-role="adv" aria-expanded="false" aria-controls="f-adv">
-          <span>${esc(t('filters.advanced'))}</span><span class="chip-btn__count" data-role="adv-count" hidden></span>${icon('chevron', { className: 'more-icon' })}
+          ${icon('settings', { className: 'adv-icon' })}<span class="adv-label">${esc(t('filters.advanced'))}</span><span class="chip-btn__count" data-role="adv-count" hidden></span>${icon('chevron', { className: 'more-icon' })}
         </button>
       </div>
+      <div data-role="tabs-slot"></div>
       <div id="f-adv" class="stack" hidden>
-      ${group('filters.stores', stores.map((s) => chipBtn('data-store', s, storeLabel(s))).join(''))}
       ${group('filters.status', STATUS_ORDER.map((s) => chipBtn('data-status', s, t('status.' + s))).join(''))}
       <div class="fgroup">
         <p class="t-label">${esc(t('filters.show'))}</p>
@@ -172,18 +171,24 @@ export function buildPanel(root, games, state, onChange) {
         </div>
       </div>` : ''}
       </div>
-      <div class="row filters__foot">
-        <p class="t-data" data-role="results" aria-live="polite"></p>
-        <button class="btn cut-a-8 is-chamfered" type="button" data-role="clear">${esc(t('filters.clear'))}</button>
+      <div class="filters__foot">
+        <div class="row">
+          <p class="t-data" data-role="results" aria-live="polite"></p>
+          <button class="btn btn--ghost cut-a-8 is-chamfered" type="button" data-role="clear">${esc(t('filters.clear'))}</button>
+        </div>
+        <div class="row">
+          <label class="t-label" for="f-sort">${esc(t('filters.sort'))}</label>
+          <select id="f-sort" class="input cut-a-6 is-chamfered">${SORT_OPTIONS.map((o) => `<option value="${o}">${esc(t('sort.opt.' + o.replace(':', '.')))}</option>`).join('')}</select>
+        </div>
       </div>
     </div>`;
 
   const $ = (sel) => root.querySelector(sel);
   const q = $('#f-q');
   const sortEl = $('#f-sort');
-  const dirBtn = $('[data-role="dir"]');
   const more = $('[data-role="more"]');
   const adv = $('[data-role="adv"]');
+  const tabs = mountStoreTabs($('[data-role="tabs-slot"]'), state, onChange, { panelId });
 
   let timer;
   q.addEventListener('input', () => {
@@ -191,11 +196,9 @@ export function buildPanel(root, games, state, onChange) {
     timer = setTimeout(() => { state.q = q.value.trim(); onChange(state); }, 150);
   });
   sortEl.addEventListener('change', () => {
-    state.sort = sortEl.value;
-    state.dir = DEFAULT_DIR[state.sort];
+    [state.sort, state.dir] = sortEl.value.split(':');
     onChange(state);
   });
-  dirBtn.addEventListener('click', () => { state.dir = state.dir === 'asc' ? 'desc' : 'asc'; onChange(state); });
   adv.addEventListener('click', () => {
     const open = adv.getAttribute('aria-expanded') !== 'true';
     adv.setAttribute('aria-expanded', String(open));
@@ -207,19 +210,18 @@ export function buildPanel(root, games, state, onChange) {
     $('#f-more').hidden = !open;
   });
   $('[data-role="clear"]').addEventListener('click', () => {
-    Object.assign(state, { q: '', fav: false, multi: false, played: null });
-    ['stores', 'status', 'tags', 'genres'].forEach((k) => state[k].clear());
+    Object.assign(state, { q: '', store: null, fav: false, multi: false, played: null });
+    ['status', 'tags', 'genres'].forEach((k) => state[k].clear());
     q.value = '';
     onChange(state);
   });
 
   const toggleSet = (set, v) => { if (set.has(v)) set.delete(v); else set.add(v); };
-  root.addEventListener('click', (e) => {
+  $('#f-adv').addEventListener('click', (e) => {
     const b = e.target.closest('.chip-btn');
-    if (!b || !root.contains(b)) return;
+    if (!b) return;
     const d = b.dataset;
-    if (d.store) toggleSet(state.stores, d.store);
-    else if (d.status) toggleSet(state.status, d.status);
+    if (d.status) toggleSet(state.status, d.status);
     else if (d.genre) toggleSet(state.genres, d.genre);
     else if (d.tag) toggleSet(state.tags, d.tag);
     else if (d.flag) state[d.flag] = !state[d.flag];
@@ -234,14 +236,11 @@ export function buildPanel(root, games, state, onChange) {
     b.querySelector('[data-count]').textContent = formatNumber(n || 0);
   };
 
-  return function update(s, counts, shown, total) {
+  function update(s, counts, shown, total) {
     if (document.activeElement !== q) q.value = s.q;
-    sortEl.value = s.sort;
-    dirBtn.setAttribute('aria-pressed', String(s.dir === 'desc'));
-    dirBtn.setAttribute('aria-label', t(s.dir === 'desc' ? 'sort.desc' : 'sort.asc'));
-    dirBtn.classList.toggle('is-asc', s.dir === 'asc');
+    sortEl.value = `${s.sort}:${s.dir}`;
+    tabs.update(s, counts);
     const cssq = (v) => CSS.escape(v);
-    stores.forEach((x) => setChip(`[data-store="${x}"]`, s.stores.has(x), counts.stores[x]));
     STATUS_ORDER.forEach((x) => setChip(`[data-status="${x}"]`, s.status.has(x), counts.status[x]));
     genres.forEach((x) => setChip(`[data-genre="${cssq(x)}"]`, s.genres.has(x), counts.genres[x]));
     tags.forEach((x) => setChip(`[data-tag="${cssq(x)}"]`, s.tags.has(x), counts.tags[x]));
@@ -249,11 +248,12 @@ export function buildPanel(root, games, state, onChange) {
     setChip('[data-flag="multi"]', s.multi, counts.multi);
     setChip('[data-played="yes"]', s.played === 'yes', counts.played.yes);
     setChip('[data-played="no"]', s.played === 'no', counts.played.no);
-    const active = s.stores.size + s.status.size + s.tags.size + s.genres.size + (s.fav ? 1 : 0) + (s.multi ? 1 : 0) + (s.played ? 1 : 0);
+    const active = s.status.size + s.tags.size + s.genres.size + (s.fav ? 1 : 0) + (s.multi ? 1 : 0) + (s.played ? 1 : 0);
     const badge = $('[data-role="adv-count"]');
     badge.hidden = active === 0;
     badge.textContent = formatNumber(active);
     $('[data-role="results"]').textContent = t('library.results', { n: formatNumber(shown), total: formatNumber(total) });
     $('[data-role="clear"]').hidden = !hasActiveFilters(s);
-  };
+  }
+  return { update, destroy: () => { clearTimeout(timer); tabs.destroy(); } };
 }

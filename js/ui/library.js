@@ -1,19 +1,17 @@
-import { t, applyI18n, formatNumber } from '../i18n/index.js';
+import { t, applyI18n } from '../i18n/index.js';
 import { icon } from '../icons.js';
 import { db } from '../data-source.js';
 import { renderGrid, bindCoverFallback, esc } from './grid.js';
+import { allStoreIds } from '../data/stores.js';
 import { parseState, stateToHash, runFilters, sortGames, buildPanel } from './filters.js';
 
 const shell = () => `
   <div class="view-head">
     <h1 class="t-heading" tabindex="-1" data-i18n="library.title"></h1>
-    <div class="row">
-      <p class="t-data" data-role="count"></p>
-      <a class="btn btn--primary cut-a-8 is-chamfered" href="#/game/new" data-role="add">${icon('plus')}<span>${esc(t('library.add'))}</span></a>
-    </div>
+    <a class="btn btn--primary cut-a-8 is-chamfered" href="#/game/new" data-role="add">${icon('plus')}<span>${esc(t('library.add'))}</span></a>
   </div>
-  <hr class="divider">
-  <section data-role="body" aria-label="" data-i18n-attr="aria-label:library.grid"></section>`;
+  <section class="panel panel--live" data-role="filters" aria-label="" data-i18n-attr="aria-label:filters.title" hidden></section>
+  <section id="lib-panel" role="tabpanel" data-role="body"></section>`;
 
 const loadingHtml = () => `<div class="state panel panel--live" role="status"><div class="loader"></div><span class="t-label">${esc(t('state.loading'))}</span></div>`;
 
@@ -33,17 +31,16 @@ const errorHtml = (code) => `<div class="state panel" role="alert">
   <button class="btn cut-a-8 is-chamfered" type="button" data-role="retry">${esc(t('state.retry'))}</button></div>`;
 
 /**
- * Monta a biblioteca: `root` recebe título + grade; `filtersRoot` recebe o painel de filtros.
- * Os filtros vivem no hash (`#/?stores=gog&q=...`) e são gravados com replaceState (sem re-render da rota).
+ * Monta a biblioteca: título, busca/filtros, abas de loja, barra de resultados e grade, tudo em `root`.
+ * Os filtros vivem no hash (`#/?store=gog&q=...`) e são gravados com replaceState (sem re-render da rota).
  * @param {HTMLElement} root
- * @param {HTMLElement} filtersRoot
  * @param {URLSearchParams} query
  * @returns {() => void} limpeza
  */
-export function mountLibrary(root, filtersRoot, query) {
+export function mountLibrary(root, query) {
   root.innerHTML = shell();
   applyI18n(root);
-  const countEl = root.querySelector('[data-role="count"]');
+  const filtersRoot = root.querySelector('[data-role="filters"]');
   const body = root.querySelector('[data-role="body"]');
   const addLink = root.querySelector('[data-role="add"]');
   bindCoverFallback(body);
@@ -51,17 +48,16 @@ export function mountLibrary(root, filtersRoot, query) {
   let disposed = false;
   let seq = 0;
   let games = [];
-  let update = null;
-
-  const countText = (n) => (n === 1 ? t('library.count.one') : t('library.count', { n: formatNumber(n) }));
+  let panel = null;
 
   function paint() {
+    // aba de uma loja que deixou de existir (excluída) volta para "Todos"
+    if (state.store && !allStoreIds().includes(state.store)) state.store = null;
     const { result, counts } = runFilters(games, state);
     sortGames(result, state);
-    countEl.textContent = countText(games.length);
     // com UMA loja filtrada, "Adicionar jogo" já abre o formulário nessa loja
-    addLink.href = state.stores.size === 1 ? `#/game/new?store=${encodeURIComponent([...state.stores][0])}` : '#/game/new';
-    update?.(state, counts, result.length, games.length);
+    addLink.href = state.store ? `#/game/new?store=${encodeURIComponent(state.store)}` : '#/game/new';
+    panel?.update(state, counts, result.length, games.length);
     if (!games.length) { body.innerHTML = emptyHtml(); return; }
     if (!result.length) {
       body.innerHTML = noResultsHtml();
@@ -94,11 +90,12 @@ export function mountLibrary(root, filtersRoot, query) {
     }
     if (disposed || mine !== seq) return;
     filtersRoot.hidden = !games.length;
-    if (games.length) update = buildPanel(filtersRoot, games, state, onChange);
+    panel?.destroy();
+    panel = games.length ? buildPanel(filtersRoot, games, state, onChange, { panelId: 'lib-panel' }) : null;
     paint();
   }
 
   const off = db.onChange((ev) => { if (!ev || ev.type === 'games') load(); });
   load();
-  return () => { disposed = true; off(); filtersRoot.replaceChildren(); };
+  return () => { disposed = true; off(); panel?.destroy(); };
 }

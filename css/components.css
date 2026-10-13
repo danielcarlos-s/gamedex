@@ -67,6 +67,13 @@
   color: var(--text-secondary); background-color: var(--surface-2); border: 1px solid var(--border);
   transition: color var(--dur) var(--ease), border-color var(--dur) var(--ease), background-color var(--dur) var(--ease);
 }
+.icon-link {
+  display: inline-flex; align-items: center; justify-content: center; min-height: 44px; min-width: 44px;
+  color: var(--text-secondary); background-color: var(--surface-2); border: 1px solid var(--border);
+  transition: color var(--dur) var(--ease), border-color var(--dur) var(--ease), background-color var(--dur) var(--ease);
+}
+.icon-link:hover { background-color: var(--accent-dim); color: var(--text-primary); }
+.icon-link[aria-current="page"] { color: var(--accent-text); border-color: var(--accent); }
 .lang-toggle button:hover, .seg-toggle button:hover { background-color: var(--accent-dim); }
 .lang-toggle button[aria-pressed="true"], .seg-toggle button[aria-pressed="true"] { color: var(--accent-text); border-color: var(--accent); }
 @media (max-width: 600px) { .lang-toggle button, .seg-toggle button { padding: 0 var(--sp-3); } }
@@ -182,19 +189,24 @@
 /* ---- Filtros ---- */
 .filters { display: grid; gap: var(--sp-7); }
 .filters__top { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--sp-7); align-items: end; }
+.filters__foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-5) var(--sp-9); padding-top: var(--sp-5); border-top: 1px solid var(--border); }
 .search { position: relative; }
 .search .icon { position: absolute; left: var(--sp-6); top: 50%; transform: translateY(-50%); color: var(--text-muted); pointer-events: none; }
 .search .input { padding-left: var(--sp-12); }
 .fgroup { display: grid; gap: var(--sp-3); }
-.filters__foot { justify-content: space-between; }
 select.input { width: auto; min-width: 160px; }
 .dir-icon { transition: transform var(--dur) var(--ease); }
 .is-asc .dir-icon { transform: rotate(180deg); }
 .more-icon { transition: transform var(--dur) var(--ease); }
 [data-role="more"][aria-expanded="true"] .more-icon, [data-role="adv"][aria-expanded="true"] .more-icon { transform: rotate(180deg); }
-[data-role="adv"] { justify-self: start; }
 [data-role="adv-count"] { color: var(--accent-text); font-weight: 700; }
-@media (max-width: 600px) { .filters__top { grid-template-columns: minmax(0, 1fr); } select.input { flex: 1; } }
+.adv-icon { display: none; }
+@media (max-width: 600px) {
+  .adv-icon { display: block; }
+  .adv-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  select.input { flex: 1; min-width: 0; }
+}
+@media (max-width: 600px) { .filters__foot .row:last-child { flex: 1 1 100%; flex-wrap: nowrap; min-width: 0; } .filters__foot select.input { flex: 1 1 0; min-width: 0; width: 0; } }
 
 /* ---- Detalhe / formulário ---- */
 .detail { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-10); align-items: start; }
@@ -268,3 +280,23 @@ dialog.help::backdrop { background-color: var(--overlay); }
 .swatch[aria-checked="true"] { border-color: var(--text-primary); outline: 2px solid var(--bg); outline-offset: -4px; }
 .store-row { padding-block: var(--sp-7); border-top: 1px solid var(--border); }
 .store-row:first-of-type { border-top: 0; }
+
+/* ---- Abas de loja ---- */
+.store-strip { display: flex; align-items: center; gap: var(--sp-5); overflow-x: auto; scroll-snap-type: x proximity; padding-block: var(--sp-2); scrollbar-width: thin; }
+.tabs { display: flex; gap: var(--sp-3); flex: none; }
+.tab {
+  display: inline-flex; align-items: center; gap: var(--sp-4); flex: none; scroll-snap-align: start;
+  min-height: 44px; padding: 0 var(--sp-7);
+  font-family: var(--font-display); font-weight: 700; font-size: 14px; letter-spacing: 0.1em; text-transform: uppercase; line-height: 1; white-space: nowrap;
+  color: var(--text-secondary); background-color: transparent; border: 1px solid var(--border); cursor: pointer;
+  transition: color var(--dur) var(--ease), border-color var(--dur) var(--ease), background-color var(--dur) var(--ease);
+}
+.tab:hover { background-color: var(--accent-dim); }
+.tab[aria-selected="true"] { color: var(--accent-text); border-color: var(--accent); background-color: var(--accent-dim); }
+.tab__dot { width: 8px; height: 8px; flex: none; background-color: var(--store, var(--text-muted)); }
+.tab__count { font-family: var(--font-body); font-weight: 500; font-size: 13px; letter-spacing: 0; color: var(--text-muted); }
+.tab.is-empty:not([aria-selected="true"]) { color: var(--text-muted); }
+.store-strip .btn { flex: none; }
+.form-error { color: var(--accent-text); }
+
+.view > *, .filters, .filters > * { min-width: 0; }

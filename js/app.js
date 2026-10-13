@@ -9,8 +9,7 @@ import { mountImport } from './ui/import-panel.js';
 import { mountSettings } from './ui/settings.js';
 
 const view = document.getElementById('view');
-const filters = document.getElementById('filters');
-const navLinks = [...document.querySelectorAll('.nav-link[data-route]')];
+const navLinks = [...document.querySelectorAll('[data-route]')];
 
 /** Rota atual a partir do hash: `#/game/abc?q=x` → { name, params, query }. */
 export function getRoute() {
@@ -46,7 +45,7 @@ const head = (key) =>
 
 function renderLibrary(_params, query) {
   const root = el('<div class="view"></div>');
-  disposeView = mountLibrary(root, filters, query);
+  disposeView = mountLibrary(root, query);
   return root;
 }
 
@@ -90,7 +89,6 @@ function render({ moveFocus = false } = {}) {
   view.replaceChildren(RENDERERS[route.name](route.params, route.query));
   applyI18n(view);
 
-  if (route.name !== 'library') filters.hidden = true;
   navLinks.forEach((a) => {
     if (a.dataset.route === route.name) a.setAttribute('aria-current', 'page');
     else a.removeAttribute('aria-current');

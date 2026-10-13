@@ -4,6 +4,7 @@ import { runAll } from './test-lib.js';
 import './tests/model.test.js';
 import './tests/worker.test.js';
 import './tests/importers.test.js';
+import './tests/filters.test.js';
 
 if (globalThis.indexedDB) { await import('./tests/db.test.js'); await import('./tests/backup.test.js'); }
 else console.log('(sem indexedDB: testes de db.js e backup.js pulados)');
