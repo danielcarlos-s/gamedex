@@ -1,4 +1,4 @@
-/* ELLOS — tokens (tema único: escuro). Fonte: DESIGN-SYSTEM.md.
+/* ELLOS — tokens (escuro por padrão; claro em [data-theme="light"]). Fonte: DESIGN-SYSTEM.md.
    Regra dura: CSS de componente nunca redefine um token. Sem @import/url(). */
 :root {
   color-scheme: dark;
@@ -47,6 +47,33 @@
   --ease: cubic-bezier(0.25, 0.46, 0.45, 0.94);
   --dur: 0.3s;
   --dur-media: 0.6s;
+
+  /* Fundo atrás de modais */
+  --overlay: rgba(26, 24, 22, 0.82);
+}
+
+/* Tema claro. Mesmos nomes de token, só os valores mudam. `--accent-text` fica mais escuro que o laranja da marca
+   (#FD8B10 sobre o fundo claro dá 2:1, ilegível): #9A4F00 passa de 4,5:1 em todas as superfícies. Traços e
+   preenchimentos continuam no laranja da marca. */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --accent-text: #9A4F00;
+  --bg: #F0EEEB;
+  --bg-secondary: #E4E2DE;
+  --surface: #FFFFFF;
+  --surface-2: #E8E5E0;
+  --border: #C8C4BC;
+  --border-strong: #3C3838;
+  --text-primary: #1A1816;
+  --text-secondary: #3C3838;
+  --text-muted: #635F5B;
+  --store-steam: oklch(0.50 0.105 250);
+  --store-epic: oklch(0.50 0.105 305);
+  --store-gog: oklch(0.50 0.105 25);
+  --store-ubisoft: oklch(0.50 0.105 165);
+  --store-ea: oklch(0.50 0.105 55);
+  --store-amazon: oklch(0.50 0.105 130);
+  --overlay: rgba(26, 24, 22, 0.55);
 }
 
 @media (prefers-reduced-motion: reduce) {

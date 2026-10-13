@@ -2,6 +2,7 @@ import { t, formatNumber } from '../i18n/index.js';
 import { icon } from '../icons.js';
 import { importBackup, backupHasKey } from '../data/backup.js';
 import { esc } from './grid.js';
+import { applyTheme } from '../theme.js';
 
 /**
  * Painel de importação de backup: escolher Mesclar ou Substituir e confirmar. Nada é gravado antes do clique.
@@ -25,6 +26,7 @@ export function mountBackupImport(host, file, hooks = {}) {
       host.innerHTML = `<div class="panel panel--live stack" role="status">
         <h2 class="state__title">${esc(t('backup.done.title'))}</h2>
         <p class="t-body">${esc(t('backup.done.text', { created: formatNumber(result.created), updated: formatNumber(result.updated), merged: formatNumber(result.merged) }))}</p>
+        ${result.theme ? `<p class="t-hint">${esc(t('backup.done.theme', { theme: t('theme.' + result.theme) }))}</p>` : ''}
         ${result.steam?.key === 'restored' ? `<p class="t-hint">${esc(t('backup.done.key'))}</p>` : result.steam?.key === 'skipped' ? `<p class="t-hint">${esc(t('backup.done.keyskipped'))}</p>` : ''}
         <div class="row"><a class="btn btn--primary cut-a-8 is-chamfered" href="#/">${esc(t('import.go.library'))}</a></div></div>`;
       return;
@@ -57,6 +59,7 @@ export function mountBackupImport(host, file, hooks = {}) {
     busy = true; error = null; render();
     try {
       result = await importBackup(file, mode, { password });
+      if (result.theme) applyTheme(result.theme, { mirror: false });
       hooks.onDone?.(result);
     } catch (e) {
       error = e?.code || 'backup_invalid';

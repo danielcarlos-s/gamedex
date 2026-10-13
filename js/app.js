@@ -1,5 +1,6 @@
 import { initI18n, applyI18n, onLangChange, t } from './i18n/index.js';
 import { initLangToggle } from './lang-toggle.js';
+import { initThemeToggle } from './theme.js';
 import { icon } from './icons.js';
 import { mountLibrary } from './ui/library.js';
 import { mountGameForm } from './ui/game-form.js';
@@ -104,6 +105,7 @@ function render({ moveFocus = false } = {}) {
 
 initI18n();
 initLangToggle();
+initThemeToggle();
 onLangChange(() => render());
 window.addEventListener('hashchange', () => render({ moveFocus: true }));
 render();

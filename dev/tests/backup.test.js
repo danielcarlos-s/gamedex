@@ -111,7 +111,7 @@ test('backup: exportar → clearGames → importar (substituir) restaura idênti
   await db.clearGames();
   assert.equal((await db.getAllGames()).length, 0);
   const res = await backup.importBackup(blob, 'replace');
-  assert.deepEqual(res, { mode: 'replace', created: 43, updated: 0, merged: 0, steam: { id: false, key: 'none' } });
+  assert.deepEqual(res, { mode: 'replace', created: 43, updated: 0, merged: 0, steam: { id: false, key: 'none' }, theme: null });
   assert.deepEqual(byId(await db.getAllGames()), before);
   await db.clearGames();
 });
@@ -211,7 +211,7 @@ test('backup/mesclar: importar o mesmo backup de novo não altera nada (idempote
   const blob = await backup.exportBackup();
   const before = byId(await db.getAllGames());
   const res = await backup.importBackup(blob, 'merge');
-  assert.deepEqual(res, { mode: 'merge', created: 0, updated: 43, merged: 0, steam: { id: false, key: 'none' } });
+  assert.deepEqual(res, { mode: 'merge', created: 0, updated: 43, merged: 0, steam: { id: false, key: 'none' }, theme: null });
   assert.deepEqual(byId(await db.getAllGames()), before);
   await db.clearGames();
 });
@@ -224,7 +224,7 @@ test('backup/mesclar: importBackup grava novos e atualizados e mantém o lastSte
   const file = { app: 'gamedex', schemaVersion: 1, exportedAt: NOW, meta: { lastSteamSync: '2026-10-01T00:00:00.000Z' },
     games: [{ ...b, notes: 'do arquivo' }, mk('Cccccc')] };
   const res = await backup.importBackup(JSON.stringify(file), 'merge');
-  assert.deepEqual(res, { mode: 'merge', created: 1, updated: 1, merged: 0, steam: { id: false, key: 'none' } });
+  assert.deepEqual(res, { mode: 'merge', created: 1, updated: 1, merged: 0, steam: { id: false, key: 'none' }, theme: null });
   assert.equal((await db.getAllGames()).length, 3);
   assert.equal((/** @type {any} */ (await db.getGame(b.id))).notes, 'do arquivo');
   assert.equal(await db.getMeta('lastSteamSync'), '2026-10-05T00:00:00.000Z');
@@ -423,4 +423,33 @@ test('backup/chave: cifrada com senha, vai e volta; senha errada não grava nada
   assert.equal(res.steam.key, 'skipped');
   assert.equal(await db.getMeta('steamKey'), 'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF');
   await db.clearGames(); await db.setMeta('steamId', null); await db.setMeta('steamKey', null);
+});
+
+test('backup/tema: o tema escolhido vai no backup e volta; mesclar não troca o tema local; valor inválido é ignorado', async () => {
+  await db.clearGames(); await db.setMeta('theme', null);
+  const none = JSON.parse(await (await backup.exportBackup()).text());
+  assert.ok(!('theme' in none.meta), 'sem tema escolhido, nada no arquivo');
+
+  await db.setMeta('theme', 'light');
+  const text = await (await backup.exportBackup()).text();
+  assert.equal(JSON.parse(text).meta.theme, 'light');
+
+  await db.setMeta('theme', null);
+  let res = await backup.importBackup(text, 'replace');
+  assert.equal(res.theme, 'light');
+  assert.equal(await db.getMeta('theme'), 'light');
+
+  await db.setMeta('theme', 'dark');
+  res = await backup.importBackup(text, 'merge');
+  assert.equal(res.theme, null);
+  assert.equal(await db.getMeta('theme'), 'dark');
+  res = await backup.importBackup(text, 'replace');
+  assert.equal(res.theme, 'light');
+
+  const bad = JSON.parse(text); bad.meta.theme = 'roxo';
+  await db.setMeta('theme', null);
+  res = await backup.importBackup(JSON.stringify(bad), 'replace');
+  assert.equal(res.theme, null);
+  assert.equal(await db.getMeta('theme'), null);
+  await db.clearGames();
 });
