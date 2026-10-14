@@ -383,3 +383,16 @@ test('covers: searchCoverAll junta o SteamGridDB quando a Steam não acha o tít
   });
   assert.equal(calls.length, 1, 'título exato na Steam não consulta o SteamGridDB');
 });
+
+test('covers: a chave do SteamGridDB do usuário vai no cabeçalho X-Sgdb-Key', async () => {
+  const { searchSgdb, sgdbStatus } = await import('../../js/importers/covers.js');
+  /** @type {any[]} */ const seen = [];
+  const real = globalThis.fetch;
+  globalThis.fetch = /** @type {any} */ ((/** @type {string} */ u, /** @type {any} */ o) => { seen.push(o?.headers?.['X-Sgdb-Key']); return Promise.resolve(jsonRes({ items: [], configured: true })); });
+  try {
+    await searchSgdb('Hades', 'https://w.test', undefined, 'abcdef0123456789abcdef0123456789');
+    assert.equal(await sgdbStatus('https://w.test', 'abcdef0123456789abcdef0123456789'), 'on');
+    await searchSgdb('Hades', 'https://w.test');
+  } finally { globalThis.fetch = real; }
+  assert.deepEqual(seen, ['abcdef0123456789abcdef0123456789', 'abcdef0123456789abcdef0123456789', undefined]);
+});

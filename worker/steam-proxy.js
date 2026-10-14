@@ -7,7 +7,8 @@
 //                             sem cache de borda).
 //   /steam/search?term=...  → busca de capa (store.steampowered.com/api/storesearch)
 //   /sgdb/search?term=...   → busca de capa no SteamGridDB (2ª fonte). Só funciona se o dono gravou o secret
-//                             STEAMGRIDDB_KEY; sem ele responde { items: [], configured: false }.
+//                             X-Sgdb-Key (enviado pelo app, nunca gravado nem em log) ou o secret opcional STEAMGRIDDB_KEY;
+//                             sem nenhum dos dois responde { items: [], configured: false }.
 // Erros: { "error": "<codigo>" } com os códigos da seção 6.4.
 
 /**
@@ -24,6 +25,7 @@ const MAX_TERM = 100;
 const MAX_ITEMS = 10; // o app filtra DLC/pacotes e fica com até 5
 const SGDB_API = 'https://www.steamgriddb.com/api/v2';
 const SGDB_GAMES = 3; // jogos candidatos por busca (1 requisição de capa cada)
+const SGDB_KEY_RE = /^[A-Za-z0-9_-]{16,64}$/;
 const KEY_RE = /^[0-9A-Fa-f]{32}$/;
 const ID_RE = /^\d{17}$/;
 const COVER = (/** @type {number} */ appid) => `https://cdn.cloudflare.steamstatic.com/steam/apps/${appid}/library_600x900_2x.jpg`;
@@ -49,7 +51,7 @@ function corsHeaders(origin) {
   return {
     'Access-Control-Allow-Origin': origin,
     'Access-Control-Allow-Methods': 'GET, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, X-Steam-Key, X-Steam-Id',
+    'Access-Control-Allow-Headers': 'Content-Type, X-Steam-Key, X-Steam-Id, X-Sgdb-Key',
     'Access-Control-Max-Age': '86400',
     Vary: 'Origin',
   };
@@ -180,16 +182,19 @@ async function sgdbGet(path, key) {
 
 /**
  * /sgdb/search: até 3 jogos do SteamGridDB, cada um com a 1ª capa retrato (600x900 ou 342x482) estática.
- * Jogo sem capa retrato fica de fora. Sem o secret: 200 com `configured: false` (o app segue só com a Steam).
+ * Jogo sem capa retrato fica de fora. Sem chave: 200 com `configured: false` (o app segue só com a Steam).
  * @param {URL} url
+ * @param {Request} request
  * @param {Env} env
  * @param {Record<string, string>} headers
  * @returns {Promise<Response>}
  */
-async function sgdbSearch(url, env, headers) {
+async function sgdbSearch(url, request, env, headers) {
   const term = (url.searchParams.get('term') || '').trim();
   if (!term || term.length > MAX_TERM) return json({ error: 'bad_request' }, 400, headers);
-  const key = (env.STEAMGRIDDB_KEY || '').trim();
+  const sent = (request.headers.get('X-Sgdb-Key') || '').trim();
+  if (sent && !SGDB_KEY_RE.test(sent)) return json({ error: 'bad_request' }, 400, headers);
+  const key = sent || (env.STEAMGRIDDB_KEY || '').trim();
   if (!key) return json({ items: [], configured: false }, 200, headers);
   const games = (await sgdbGet('/search/autocomplete/' + encodeURIComponent(term), key))
     .filter((/** @type {any} */ g) => Number.isInteger(g?.id))
@@ -201,7 +206,7 @@ async function sgdbSearch(url, env, headers) {
     const grid = grids[i].find((/** @type {any} */ x) => typeof x?.url === 'string' && x.url.startsWith('https://'));
     if (grid) items.push({ sgdbId: games[i].id, name: String(games[i].name ?? ''), coverUrl: grid.url });
   }
-  return json({ items, configured: true }, 200, { ...headers, 'Cache-Control': `public, max-age=${SEARCH_TTL}` });
+  return json({ items, configured: true }, 200, { ...headers, 'Cache-Control': sent ? 'no-store' : `public, max-age=${SEARCH_TTL}` });
 }
 
 /**
@@ -222,7 +227,7 @@ export async function handle(request, env) {
   try {
     if (url.pathname === '/steam/owned') return await owned(request, env, headers);
     if (url.pathname === '/steam/search') return await search(url, headers);
-    if (url.pathname === '/sgdb/search') return await sgdbSearch(url, env, headers);
+    if (url.pathname === '/sgdb/search') return await sgdbSearch(url, request, env, headers);
     return json({ error: 'not_found' }, 404, headers);
   } catch (err) {
     // Só códigos conhecidos saem; qualquer outra falha vira 500 genérico, sem mensagem (poderia conter a key).

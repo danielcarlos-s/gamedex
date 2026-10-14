@@ -295,7 +295,7 @@ export async function mountGameForm(root, id, opts = {}) {
     try {
       const url = await workerUrl();
       if (!url) throw { code: 'worker_not_configured' };
-      cover.items = await searchCoverAll(term, url);
+      cover.items = await searchCoverAll(term, url, undefined, (await db.getMeta('sgdbKey').catch(() => null)) || undefined);
     } catch (e) {
       cover.error = e?.code || 'network';
     }

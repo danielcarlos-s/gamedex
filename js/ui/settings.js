@@ -8,7 +8,7 @@ import { fetchOwned } from '../importers/steam.js';
 import { sgdbStatus } from '../importers/covers.js';
 
 const isHttpUrl = (u) => { try { return /^https?:$/.test(new URL(u).protocol); } catch { return false; } };
-const SGDB_CMD = 'npx wrangler secret put STEAMGRIDDB_KEY';
+const SGDB_KEY_RE = /^[A-Za-z0-9_-]{16,64}$/;
 /** Código de erro do teste → chave i18n (o resto usa `err.<código>`). */
 const TEST_ERR = { network: 'connect.err.worker', not_found: 'connect.err.worker', steam_upstream: 'connect.err.key', bad_request: 'connect.err.key' };
 
@@ -23,6 +23,7 @@ export function mountSettings(root) {
   let workerUrl = '';
   let steamId = '';
   let hasKey = false;
+  let hasSgdb = false;
   let storeCounts = {};
   let newHue = CUSTOM_HUES[0];
   /** @type {Record<string, number>} matiz escolhido por loja, ainda não salvo */
@@ -41,6 +42,7 @@ export function mountSettings(root) {
       workerUrl = (await db.getMeta('workerUrl')) || '';
       steamId = (await db.getMeta('steamId')) || '';
       hasKey = !!(await db.getMeta('steamKey'));
+      hasSgdb = !!(await db.getMeta('sgdbKey'));
       const all = await db.getAllGames();
       storeCounts = {};
       for (const g of all) for (const s of new Set((g.ownerships || []).map((o) => o.store))) storeCounts[s] = (storeCounts[s] || 0) + 1;
@@ -87,8 +89,10 @@ export function mountSettings(root) {
       <div class="stack">
         <h3 class="t-label">${esc(t('connect.sgdb.title'))}</h3>
         <p class="t-body measure">${esc(t('connect.sgdb.text'))}</p>
-        <div class="row"><code class="t-data">${esc(SGDB_CMD)}</code>
-          <button type="button" class="btn btn--ghost cut-a-6 is-chamfered" data-act="copy-cmd">${esc(t('connect.sgdb.copy'))}</button></div>
+        <div class="field"><label class="field__label" for="s-sgdbkey">${esc(t('connect.sgdb.label'))} ${stepState(hasSgdb)}</label>
+          <a class="btn btn--ghost cut-a-6 is-chamfered help-btn" href="https://www.steamgriddb.com/profile/preferences/api" target="_blank" rel="noopener noreferrer">${icon('help')}<span>${esc(t('connect.sgdb.get'))}</span></a>
+          <input id="s-sgdbkey" class="input cut-a-6 is-chamfered" type="password" autocomplete="off" spellcheck="false" maxlength="64"
+            placeholder="${esc(hasSgdb ? t('settings.steam.keyset') : '')}"></div>
         ${sgdbLine}
       </div>
     </form>`;
@@ -105,7 +109,9 @@ export function mountSettings(root) {
     const url = root.querySelector('#s-worker').value.trim();
     const id = root.querySelector('#s-steamid').value.trim();
     const key = root.querySelector('#s-steamkey').value.trim();
+    const sg = root.querySelector('#s-sgdbkey').value.trim();
     const bad = (url && !isHttpUrl(url)) ? 'invalid_url'
+      : (sg && !SGDB_KEY_RE.test(sg)) ? 'sgdb_key_invalid'
       : (id && !/^\d{17}$/.test(id)) ? 'steam_id_invalid'
       : (key && !/^[0-9a-f]{32}$/i.test(key)) ? 'steam_key_invalid'
       : (key && !id) ? 'steam_id_required'
@@ -116,6 +122,7 @@ export function mountSettings(root) {
       await db.setMeta('workerUrl', url || null);
       if (id) await db.setMeta('steamId', id);
       if (key) await db.setMeta('steamKey', key);
+      if (sg) await db.setMeta('sgdbKey', sg);
       msg.connect = { text: t('settings.steam.saved') };
       delete connDraft.worker; delete connDraft.id;
     } catch (err) { msg.connect = { error: err?.code || 'idb_unavailable' }; }
@@ -129,7 +136,7 @@ export function mountSettings(root) {
       const [key, id] = [await db.getMeta('steamKey'), await db.getMeta('steamId')];
       const games = await fetchOwned(workerUrl, { key, steamId: id });
       msg.test = { text: t('connect.test.ok', { n: games.length }) };
-      sgdb = await sgdbStatus(workerUrl);
+      sgdb = await sgdbStatus(workerUrl, (await db.getMeta('sgdbKey')) || undefined);
     } catch (e) {
       const code = e?.code || 'network';
       msg.test = TEST_ERR[code] ? { error: TEST_ERR[code], raw: true } : { error: code };
@@ -227,11 +234,9 @@ export function mountSettings(root) {
     const a = b.dataset.act;
     if (a === 'swatch' || a === 'store-create' || a === 'store-save' || a === 'store-delete') { storeAction(a, b); return; }
     if (a === 'test') testConnect();
-    else if (a === 'copy-cmd') {
-      navigator.clipboard?.writeText(SGDB_CMD).then(() => { b.textContent = t('connect.sgdb.copied'); }).catch(() => {});
-    } else if (a === 'connect-clear') {
-      Promise.all([db.setMeta('steamKey', null), db.setMeta('steamId', null), db.setMeta('workerUrl', null)])
-        .then(() => { workerUrl = ''; steamId = ''; hasKey = false; sgdb = null; delete connDraft.worker; delete connDraft.id; msg.test = null; msg.connect = { text: t('connect.cleared') }; render('#s-worker'); })
+    else if (a === 'connect-clear') {
+      Promise.all([db.setMeta('steamKey', null), db.setMeta('steamId', null), db.setMeta('workerUrl', null), db.setMeta('sgdbKey', null)])
+        .then(() => { workerUrl = ''; steamId = ''; hasKey = false; hasSgdb = false; sgdb = null; delete connDraft.worker; delete connDraft.id; msg.test = null; msg.connect = { text: t('connect.cleared') }; render('#s-worker'); })
         .catch((err) => { msg.connect = { error: err?.code || 'idb_unavailable' }; render(); });
     }
   });

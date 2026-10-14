@@ -198,3 +198,23 @@ test('worker: /sgdb/search com o secret → até 3 jogos com a 1ª capa https; c
   assert.equal(calls.length, 4, '1 busca + 3 grids');
   assert.ok(calls.every((u) => !u.includes(KEY2)) && !seen[0].includes(KEY2));
 });
+
+test('worker: /sgdb/search aceita a chave do usuário no cabeçalho X-Sgdb-Key (sem secret), valida o formato e não faz cache público', async () => {
+  const MINE = 'abcdef0123456789abcdef0123456789';
+  const r0 = (/** @type {string|null} */ k) => /** @type {any} */ ({ method: 'GET', url: W + '/sgdb/search?term=Hades', headers: { get: (/** @type {string} */ n) => n.toLowerCase() === 'origin' ? OK : n.toLowerCase() === 'x-sgdb-key' ? k : null } });
+  /** @type {string[]} */ const auth = [];
+  const calls = await withFetch(() => jsonRes({ data: [] }), async () => {
+    const real = globalThis.fetch;
+    globalThis.fetch = /** @type {any} */ ((/** @type {string} */ u, /** @type {any} */ o) => { auth.push(o?.headers?.Authorization); return real(u, o); });
+    try {
+      const r = await handle(r0(MINE), env);
+      assert.equal(r.status, 200);
+      assert.equal(r.headers.get('Cache-Control'), 'no-store');
+      assert.equal((await r.json()).configured, true);
+      assert.equal((await handle(r0('curto'), env)).status, 400);
+      assert.equal((await (await handle(r0(null), env)).json()).configured, false, 'sem cabeçalho e sem secret');
+    } finally { globalThis.fetch = real; }
+  });
+  assert.ok(auth.every((a) => a === 'Bearer ' + MINE), 'a chave do usuário vai ao SteamGridDB');
+  assert.ok(calls.every((u) => !u.includes(MINE)));
+});

@@ -231,6 +231,7 @@ export function mountImport(root, query) {
       covers.result = await queueCovers(games, {
         workerUrl: url,
         sgdb: true,
+        sgdbKey: (await db.getMeta('sgdbKey').catch(() => null)) || undefined,
         signal: abort.signal,
         onProgress: (p) => { covers.done = p.done; covers.total = p.total; if (!disposed) render(covers.choice ? null : '[data-act="cover-cancel"]'); },
         onAmbiguous: (game, items) => new Promise((resolve) => {
