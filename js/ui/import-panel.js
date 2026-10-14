@@ -57,6 +57,7 @@ export function mountImport(root, query) {
           ? `<button type="button" class="btn btn--primary cut-a-8 is-chamfered" data-act="steam">${esc(t('import.steam.button'))}</button>`
           : `<a class="btn btn--primary cut-a-8 is-chamfered" href="#/settings">${esc(t('import.open.settings'))}</a>`}</div>
       </section>
+      ${coversHtml()}
       <section class="panel stack">
         <h2 class="t-section">${esc(t('import.file.title'))}</h2>
         <p class="t-body measure">${esc(t('import.file.text'))}</p>
@@ -124,7 +125,9 @@ export function mountImport(root, query) {
       const r = c.result;
       return `<section class="panel stack" role="status"><h2 class="t-section">${esc(t('import.covers.title'))}</h2>
         <p class="t-body">${esc(t(r.cancelled ? 'import.covers.result.cancelled' : 'import.covers.result', { updated: formatNumber(r.updated.length), skipped: formatNumber(r.skipped), notFound: formatNumber(r.notFound), failed: formatNumber(r.failed) }))}</p>
-        ${c.error ? `<p class="field__error" role="alert">${icon('alert')} ${esc(t('err.' + c.error))}</p>` : ''}</section>`;
+        ${c.error ? `<p class="field__error" role="alert">${icon('alert')} ${esc(t('err.' + c.error))}</p>` : ''}
+        ${c.missing ? `<p class="t-body measure">${esc(t('import.covers.remaining', { n: formatNumber(c.missing) }))}</p>
+        <div class="row"><button type="button" class="btn cut-a-8 is-chamfered" data-act="cover-start">${esc(t('import.covers.retry'))}</button></div>` : ''}</section>`;
     }
     if (c.error) return `<section class="panel stack"><p class="field__error" role="alert">${icon('alert')} ${esc(t('err.' + c.error))}</p></section>`;
     if (!c.missing) return '';
@@ -244,6 +247,7 @@ export function mountImport(root, query) {
       covers.result = { updated: [], skipped: 0, notFound: 0, failed: 0, cancelled: true };
     }
     covers.running = false; covers.choice = null; abort = null;
+    covers.missing = await countMissingCovers().catch(() => 0);
     if (!disposed) render();
   }
 
@@ -283,6 +287,7 @@ export function mountImport(root, query) {
     lastSync = v || null; steamReady = !!(url && creds);
     if (!disposed && phase === 'idle') render(csvFocus ? '[data-role="file-label"]' : null);
   }).catch(() => {});
+  countMissingCovers().then((n) => { covers.missing = n; if (!disposed && phase === 'idle' && !covers.running) render(); }).catch(() => {});
   const csvFocus = query?.get('csv') === '1';
   render(csvFocus ? '[data-role="file-label"]' : null);
   return () => { disposed = true; abort?.abort(); covers.choice?.resolve(null); };
