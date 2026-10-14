@@ -8,6 +8,7 @@ import { mountLibrary } from './ui/library.js';
 import { mountGameForm } from './ui/game-form.js';
 import { mountImport } from './ui/import-panel.js';
 import { mountSettings } from './ui/settings.js';
+import { mountBackupPage } from './ui/backup-page.js';
 
 const view = document.getElementById('view');
 const navLinks = [...document.querySelectorAll('[data-route]')];
@@ -27,12 +28,13 @@ export function getRoute() {
   }
   if (path === '/import') return { name: 'import', params: {}, query };
   if (path === '/settings') return { name: 'settings', params: {}, query };
+  if (path === '/backup') return { name: 'backup', params: {}, query };
   return { name: 'notfound', params: {}, query };
 }
 
 const TITLES = {
   library: 'library.title', game: 'game.title', import: 'import.title',
-  settings: 'settings.title', notfound: 'notfound.title',
+  settings: 'settings.title', backup: 'nav.backup', notfound: 'notfound.title',
 };
 
 function el(html) {
@@ -57,9 +59,15 @@ function renderGame({ id }, query) {
   return root;
 }
 
-function renderImport() {
+function renderBackup() {
   const root = el('<div class="view view--narrow"></div>');
-  disposeView = mountImport(root);
+  disposeView = mountBackupPage(root);
+  return root;
+}
+
+function renderImport(_params, query) {
+  const root = el('<div class="view view--narrow"></div>');
+  disposeView = mountImport(root, query);
   return root;
 }
 
@@ -76,7 +84,7 @@ const renderNotFound = () => el(`<div class="view view--narrow">
 
 const RENDERERS = {
   library: renderLibrary, game: renderGame, import: renderImport,
-  settings: renderSettings, notfound: renderNotFound,
+  settings: renderSettings, backup: renderBackup, notfound: renderNotFound,
 };
 
 let lastKey = null;

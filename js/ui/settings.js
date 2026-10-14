@@ -1,17 +1,20 @@
-import { t, formatDate } from '../i18n/index.js';
+import { t } from '../i18n/index.js';
 import { icon } from '../icons.js';
 import { db } from '../data-source.js';
-import { downloadBackup, fsAccessSupported, getLinkStatus, linkFile, unlinkFile, reconnect, onAutoSave } from '../data/backup.js';
 import { openHelp } from './help-modal.js';
 import { CUSTOM_HUES, MAX_NAME, getCustomStores, createStore, updateStore, deleteStore } from '../data/stores.js';
 import { esc } from './grid.js';
-import { mountBackupImport } from './backup-flow.js';
+import { fetchOwned } from '../importers/steam.js';
+import { sgdbStatus } from '../importers/covers.js';
 
-const DAY = 86400000;
 const isHttpUrl = (u) => { try { return /^https?:$/.test(new URL(u).protocol); } catch { return false; } };
+const SGDB_CMD = 'npx wrangler secret put STEAMGRIDDB_KEY';
+/** Código de erro do teste → chave i18n (o resto usa `err.<código>`). */
+const TEST_ERR = { network: 'connect.err.worker', not_found: 'connect.err.worker', steam_upstream: 'connect.err.key', bad_request: 'connect.err.key' };
 
 /**
- * Tela #/settings: URL do Worker, backup (exportar/importar), arquivo vinculado.
+ * Tela #/settings: "Conectar Steam" (Worker, SteamID e chave, com estado e teste) e lojas criadas pelo usuário.
+ * Backup e arquivo vinculado ficam em #/backup.
  * @param {HTMLElement} root
  * @returns {() => void} limpeza
  */
@@ -20,61 +23,122 @@ export function mountSettings(root) {
   let workerUrl = '';
   let steamId = '';
   let hasKey = false;
-  let withKey = false;
   let storeCounts = {};
   let newHue = CUSTOM_HUES[0];
   /** @type {Record<string, number>} matiz escolhido por loja, ainda não salvo */
   const rowHue = {};
   /** @type {Record<string, string>} nomes digitados e ainda não salvos (chave `new` ou id da loja) */
   const nameDraft = {};
-  let lastBackup = null;
-  let gamesCount = 0;
-  let link = 'unsupported';
-  let auto = null;
-  let msg = { stores: null, steam: null, workerUrl: null, backup: null, link: null };
-  let importing = false;
+  /** @type {Record<string, string>} campos da conexão digitados e ainda não salvos */
+  const connDraft = {};
+  let msg = { stores: null, connect: null, test: null };
+  let testing = false;
+  /** @type {'on'|'off'|'unknown'|null} */
+  let sgdb = null;
 
   async function load(repaint = true) {
     try {
-      [workerUrl, lastBackup] = [(await db.getMeta('workerUrl')) || '', (await db.getMeta('lastBackupAt')) || null];
+      workerUrl = (await db.getMeta('workerUrl')) || '';
       steamId = (await db.getMeta('steamId')) || '';
       hasKey = !!(await db.getMeta('steamKey'));
       const all = await db.getAllGames();
-      gamesCount = all.length;
       storeCounts = {};
       for (const g of all) for (const s of new Set((g.ownerships || []).map((o) => o.store))) storeCounts[s] = (storeCounts[s] || 0) + 1;
-    } catch (e) { msg.backup = { error: e?.code || 'idb_unavailable' }; }
-    link = fsAccessSupported() ? await getLinkStatus() : 'unsupported';
+    } catch (e) { msg.connect = { error: e?.code || 'idb_unavailable' }; }
     if (!disposed && repaint) render();
   }
 
   const note = (m) => (!m ? '' : m.error
-    ? `<p class="field__error" role="alert">${icon('alert')} ${esc(t('err.' + m.error))}</p>`
+    ? `<p class="field__error" role="alert">${icon('alert')} ${esc(m.raw ? t(m.error) : t('err.' + m.error))}</p>`
     : `<p class="t-hint" role="status">${esc(m.text)}</p>`);
 
-  function backupAge() {
-    if (!lastBackup) return gamesCount ? { stale: true, text: t('settings.backup.never') } : null;
-    const days = Math.floor((Date.now() - Date.parse(lastBackup)) / DAY);
-    return days > 30 ? { stale: true, text: t('settings.backup.stale', { days }) } : { stale: false, text: t('settings.backup.last', { date: formatDate(lastBackup, { dateStyle: 'medium', timeStyle: 'short' }) }) };
-  }
+  // ---------- Conectar Steam ----------
+  const stepState = (ok) => `<span class="t-data">${ok ? icon('check') : ''} ${esc(t(ok ? 'connect.state.ok' : 'connect.state.todo'))}</span>`;
 
-  function linkHtml() {
-    if (link === 'unsupported') return '';
-    const status = t('settings.link.status.' + link);
-    const autoLine = auto ? (auto.ok ? `<p class="t-hint" role="status">${esc(t('settings.link.saved', { time: formatDate(auto.at, { timeStyle: 'short' }) }))}</p>`
-      : `<p class="field__error" role="alert">${icon('alert')} ${esc(t('err.' + auto.code))}</p>`) : '';
-    return `<section class="panel stack">
-      <h2 class="t-section">${esc(t('settings.link.title'))}</h2>
-      <p class="t-body measure">${esc(t('settings.link.text'))}</p>
-      <p class="t-data">${esc(status)}</p>
-      ${autoLine}${note(msg.link)}
+  function connectHtml() {
+    const steps = [workerUrl, steamId, hasKey];
+    const done = steps.filter(Boolean).length;
+    const val = (k, v) => esc(connDraft[k] ?? v);
+    const sgdbLine = sgdb ? `<p class="t-data">${esc(t('connect.sgdb.' + sgdb))}</p>` : '';
+    return `<form class="panel panel--live stack" data-role="connect" novalidate autocomplete="off">
+      <div class="row"><h2 class="t-section">${esc(t('connect.title'))}</h2>
+        <span class="chip cut-a-4 ${done === 3 ? 'chip--ok' : ''}" role="status">${esc(done === 3 ? t('connect.status.ok') : t('connect.status.pending', { n: done }))}</span></div>
+      <p class="t-body measure">${esc(t('connect.text'))}</p>
+
+      <div class="field"><label class="field__label" for="s-worker">${esc(t('connect.s1'))} ${stepState(!!workerUrl)}</label>
+        <button type="button" class="btn btn--ghost cut-a-6 is-chamfered help-btn" data-help="worker">${icon('help')}<span>${esc(t('help.open.worker'))}</span></button>
+        <input id="s-worker" class="input cut-a-6 is-chamfered" type="url" inputmode="url" autocomplete="off" spellcheck="false" value="${val('worker', workerUrl)}" placeholder="${esc(t('settings.worker.placeholder'))}"></div>
+      <div class="field"><label class="field__label" for="s-steamid">${esc(t('connect.s2'))} ${stepState(!!steamId)}</label>
+        <button type="button" class="btn btn--ghost cut-a-6 is-chamfered help-btn" data-help="steamid">${icon('help')}<span>${esc(t('help.open.steamid'))}</span></button>
+        <input id="s-steamid" class="input cut-a-6 is-chamfered" type="text" inputmode="numeric" autocomplete="off" maxlength="17" value="${val('id', steamId)}"></div>
+      <div class="field"><label class="field__label" for="s-steamkey">${esc(t('connect.s3'))} ${stepState(hasKey)}</label>
+        <button type="button" class="btn btn--ghost cut-a-6 is-chamfered help-btn" data-help="apikey">${icon('help')}<span>${esc(t('help.open.apikey'))}</span></button>
+        <input id="s-steamkey" class="input cut-a-6 is-chamfered" type="password" autocomplete="off" spellcheck="false" maxlength="32"
+          placeholder="${esc(hasKey ? t('settings.steam.keyset') : '')}"></div>
+      <p class="t-hint measure">${esc(t('connect.hint'))}</p>
+      ${note(msg.connect)}
       <div class="row">
-        ${link === 'none' ? `<button type="button" class="btn btn--primary cut-a-8 is-chamfered" data-act="link">${esc(t('settings.link.link'))}</button>` : ''}
-        ${link === 'needs-permission' ? `<button type="button" class="btn btn--primary cut-a-8 is-chamfered" data-act="reconnect">${esc(t('settings.link.reconnect'))}</button>` : ''}
-        ${link !== 'none' ? `<button type="button" class="btn cut-a-8 is-chamfered" data-act="unlink">${esc(t('settings.link.unlink'))}</button>` : ''}
-      </div></section>`;
+        <button type="submit" class="btn btn--primary cut-a-8 is-chamfered">${esc(t('common.save'))}</button>
+        <button type="button" class="btn cut-a-8 is-chamfered" data-act="test" ${testing || done < 3 ? 'disabled' : ''}>${esc(t(testing ? 'connect.testing' : 'connect.test.btn'))}</button>
+        <button type="button" class="btn btn--ghost cut-a-8 is-chamfered" data-act="connect-clear">${esc(t('connect.clear'))}</button>
+      </div>
+      <div aria-live="polite">${note(msg.test)}</div>
+
+      <div class="stack">
+        <h3 class="t-label">${esc(t('connect.sgdb.title'))}</h3>
+        <p class="t-body measure">${esc(t('connect.sgdb.text'))}</p>
+        <div class="row"><code class="t-data">${esc(SGDB_CMD)}</code>
+          <button type="button" class="btn btn--ghost cut-a-6 is-chamfered" data-act="copy-cmd">${esc(t('connect.sgdb.copy'))}</button></div>
+        ${sgdbLine}
+      </div>
+    </form>`;
   }
 
+  function captureConn() {
+    for (const [k, sel] of [['worker', '#s-worker'], ['id', '#s-steamid']]) {
+      const el = root.querySelector(sel);
+      if (el) connDraft[k] = el.value;
+    }
+  }
+
+  async function saveConnect() {
+    const url = root.querySelector('#s-worker').value.trim();
+    const id = root.querySelector('#s-steamid').value.trim();
+    const key = root.querySelector('#s-steamkey').value.trim();
+    const bad = (url && !isHttpUrl(url)) ? 'invalid_url'
+      : (id && !/^\d{17}$/.test(id)) ? 'steam_id_invalid'
+      : (key && !/^[0-9a-f]{32}$/i.test(key)) ? 'steam_key_invalid'
+      : (key && !id) ? 'steam_id_required'
+      : (id && !key && !hasKey) ? 'steam_key_required' : null;
+    msg.test = null;
+    if (bad) { msg.connect = { error: bad }; captureConn(); return render(bad === 'invalid_url' ? '#s-worker' : '#s-steamid'); }
+    try {
+      await db.setMeta('workerUrl', url || null);
+      if (id) await db.setMeta('steamId', id);
+      if (key) await db.setMeta('steamKey', key);
+      msg.connect = { text: t('settings.steam.saved') };
+      delete connDraft.worker; delete connDraft.id;
+    } catch (err) { msg.connect = { error: err?.code || 'idb_unavailable' }; }
+    await load(false);
+    render('[data-role="connect"] button[type="submit"]');
+  }
+
+  async function testConnect() {
+    testing = true; msg.test = null; captureConn(); render('[data-act="test"]');
+    try {
+      const [key, id] = [await db.getMeta('steamKey'), await db.getMeta('steamId')];
+      const games = await fetchOwned(workerUrl, { key, steamId: id });
+      msg.test = { text: t('connect.test.ok', { n: games.length }) };
+      sgdb = await sgdbStatus(workerUrl);
+    } catch (e) {
+      const code = e?.code || 'network';
+      msg.test = TEST_ERR[code] ? { error: TEST_ERR[code], raw: true } : { error: code };
+    }
+    testing = false;
+    if (!disposed) render('[data-act="test"]');
+  }
+
+  // ---------- Lojas ----------
   const swatches = (scope, cur) => `<div class="swatches" role="radiogroup" aria-label="${esc(t('settings.stores.color'))}">${CUSTOM_HUES.map((h, i) => `<button type="button" class="swatch cut-a-4 is-chamfered" role="radio" aria-checked="${h === cur}" data-act="swatch" data-scope="${esc(scope)}" data-hue="${h}" style="--h:${h}" aria-label="${esc(t('settings.stores.colorn', { n: i + 1 }))}"></button>`).join('')}</div>`;
 
   function storesHtml() {
@@ -114,7 +178,7 @@ export function mountSettings(root) {
   }
 
   async function storeAction(a, b) {
-    captureNames();
+    captureNames(); captureConn();
     msg.stores = null;
     try {
       if (a === 'swatch') {
@@ -144,105 +208,16 @@ export function mountSettings(root) {
   }
 
   function render(focusSel) {
-    const age = backupAge();
     root.innerHTML = `
       <div class="view-head"><h1 class="t-heading" tabindex="-1">${esc(t('settings.title'))}</h1></div><hr class="divider">
       <div class="stack">
-        <form class="panel stack" data-role="worker" novalidate>
-          <h2 class="t-section">${esc(t('settings.worker.title'))}</h2>
-          <p class="t-body measure">${esc(t('settings.worker.text'))}</p>
-          <div class="field"><label class="field__label" for="s-worker">${esc(t('settings.worker.label'))}</label>
-            <button type="button" class="btn btn--ghost cut-a-6 is-chamfered help-btn" data-help="worker">${icon('help')}<span>${esc(t('help.open.worker'))}</span></button>
-            <input id="s-worker" class="input cut-a-6 is-chamfered" type="url" inputmode="url" autocomplete="off" value="${esc(workerUrl)}" placeholder="${esc(t('settings.worker.placeholder'))}"
-              ${msg.workerUrl?.error ? 'aria-invalid="true" aria-describedby="s-worker-msg"' : ''}></div>
-          <div id="s-worker-msg">${note(msg.workerUrl)}</div>
-          <div class="row">
-            <button type="submit" class="btn btn--primary cut-a-8 is-chamfered">${esc(t('common.save'))}</button>
-            <button type="button" class="btn btn--ghost cut-a-8 is-chamfered" data-act="worker-reset">${esc(t('settings.worker.reset'))}</button>
-          </div>
-        </form>
-
-        <form class="panel stack" data-role="steam" novalidate autocomplete="off">
-          <h2 class="t-section">${esc(t('settings.steam.title'))}</h2>
-          <p class="t-body measure">${esc(t('settings.steam.text'))}</p>
-          <div class="field"><label class="field__label" for="s-steamid">${esc(t('settings.steam.id'))}</label>
-            <button type="button" class="btn btn--ghost cut-a-6 is-chamfered help-btn" data-help="steamid">${icon('help')}<span>${esc(t('help.open.steamid'))}</span></button>
-            <input id="s-steamid" class="input cut-a-6 is-chamfered" type="text" inputmode="numeric" autocomplete="off" maxlength="17" value="${esc(steamId)}"></div>
-          <div class="field"><label class="field__label" for="s-steamkey">${esc(t('settings.steam.key'))}</label>
-            <button type="button" class="btn btn--ghost cut-a-6 is-chamfered help-btn" data-help="apikey">${icon('help')}<span>${esc(t('help.open.apikey'))}</span></button>
-            <input id="s-steamkey" class="input cut-a-6 is-chamfered" type="password" autocomplete="off" spellcheck="false" maxlength="32"
-              placeholder="${esc(hasKey ? t('settings.steam.keyset') : '')}"></div>
-          <p class="t-hint">${esc(t('settings.steam.hint'))}</p>
-          <div id="s-steam-msg">${note(msg.steam)}</div>
-          <div class="row">
-            <button type="submit" class="btn btn--primary cut-a-8 is-chamfered">${esc(t('common.save'))}</button>
-            <button type="button" class="btn btn--ghost cut-a-8 is-chamfered" data-act="steam-clear">${esc(t('settings.steam.clear'))}</button>
-          </div>
-        </form>
-
+        ${connectHtml()}
         ${storesHtml()}
-
-        <section class="panel stack">
-          <h2 class="t-section">${esc(t('settings.backup.title'))}</h2>
-          <p class="t-body measure">${esc(t('settings.backup.text'))}</p>
-          ${age ? `<p class="${age.stale ? 'warn' : 't-data'}" ${age.stale ? 'role="status"' : ''}>${age.stale ? icon('alert') : ''} ${esc(age.text)}</p>` : ''}
-          ${hasKey ? `<div class="stack">
-            <label class="choice"><input type="checkbox" id="s-bk-key" ${withKey ? 'checked' : ''}>
-              <span><span class="choice__title">${esc(t('settings.backup.key'))}</span><span class="t-body">${esc(t('settings.backup.key.text'))}</span></span></label>
-            ${withKey ? `<div class="field"><label class="field__label" for="s-bk-pw">${esc(t('settings.backup.password'))}</label>
-              <input id="s-bk-pw" class="input cut-a-6 is-chamfered" type="password" autocomplete="new-password"></div>
-            <div class="field"><label class="field__label" for="s-bk-pw2">${esc(t('settings.backup.password2'))}</label>
-              <input id="s-bk-pw2" class="input cut-a-6 is-chamfered" type="password" autocomplete="new-password"></div>` : ''}
-          </div>` : ''}
-          ${note(msg.backup)}
-          <div class="row">
-            <button type="button" class="btn btn--primary cut-a-8 is-chamfered" data-act="export">${icon('upload', { className: 'flip' })}<span>${esc(t('settings.backup.export'))}</span></button>
-            <input id="s-bk" class="visually-hidden" type="file" accept=".json,application/json">
-            <label for="s-bk" class="btn cut-a-8 is-chamfered" tabindex="0" role="button" data-role="file-label">${icon('upload')}<span>${esc(t('settings.backup.import'))}</span></label>
-          </div>
-          <div data-role="backup-import"></div>
-        </section>
-
-        ${linkHtml()}
       </div>`;
     if (focusSel) root.querySelector(focusSel)?.focus();
   }
 
-  async function guard(key, fn) {
-    msg[key] = null;
-    try { await fn(); } catch (e) { msg[key] = { error: e?.code || 'fs_permission_denied' }; }
-    link = fsAccessSupported() ? await getLinkStatus() : 'unsupported';
-    if (!disposed) render();
-  }
-
-  async function saveSteam() {
-    const id = root.querySelector('#s-steamid').value.trim();
-    const key = root.querySelector('#s-steamkey').value.trim();
-    const bad = (id && !/^\d{17}$/.test(id)) ? 'steam_id_invalid'
-      : (key && !/^[0-9a-f]{32}$/i.test(key)) ? 'steam_key_invalid'
-      : (key && !id) ? 'steam_id_required'
-      : (id && !key && !hasKey) ? 'steam_key_required' : null;
-    if (bad) { msg.steam = { error: bad }; return render('#s-steamid'); }
-    try {
-      if (id) {
-        await db.setMeta('steamId', id);
-        if (key) await db.setMeta('steamKey', key);
-        msg.steam = { text: t('settings.steam.saved') };
-      }
-    } catch (err) { msg.steam = { error: err?.code || 'idb_unavailable' }; }
-    await load(false);
-    render('#s-steamid');
-  }
-
-  root.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    if (e.target.dataset.role === 'steam') return saveSteam();
-    const v = root.querySelector('#s-worker').value.trim();
-    if (v && !isHttpUrl(v)) { msg.workerUrl = { error: 'invalid_url' }; render('#s-worker'); return; }
-    try { await db.setMeta('workerUrl', v || null); workerUrl = v; msg.workerUrl = { text: t('settings.worker.saved') }; }
-    catch (err) { msg.workerUrl = { error: err?.code || 'idb_unavailable' }; }
-    render('#s-worker');
-  });
+  root.addEventListener('submit', (e) => { e.preventDefault(); saveConnect(); });
 
   root.addEventListener('click', (e) => {
     const h = e.target.closest('[data-help]');
@@ -251,44 +226,17 @@ export function mountSettings(root) {
     if (!b) return;
     const a = b.dataset.act;
     if (a === 'swatch' || a === 'store-create' || a === 'store-save' || a === 'store-delete') { storeAction(a, b); return; }
-    if (a === 'steam-clear') {
-      Promise.all([db.setMeta('steamKey', null), db.setMeta('steamId', null)])
-        .then(() => { steamId = ''; hasKey = false; msg.steam = { text: t('settings.steam.cleared') }; render('#s-steamid'); })
-        .catch((err) => { msg.steam = { error: err?.code || 'idb_unavailable' }; render(); });
-    } else if (a === 'worker-reset') {
-      db.setMeta('workerUrl', null).then(() => { workerUrl = ''; msg.workerUrl = { text: t('settings.worker.saved') }; render('#s-worker'); })
-        .catch((err) => { msg.workerUrl = { error: err?.code || 'idb_unavailable' }; render(); });
-    } else if (a === 'export') {
-      guard('backup', async () => {
-        /** @type {{includeKey?: boolean, password?: string}} */ const opts = {};
-        if (withKey && hasKey) {
-          const pw = root.querySelector('#s-bk-pw')?.value || '';
-          if (pw.length < 8) throw { code: 'password_short' };
-          if (pw !== root.querySelector('#s-bk-pw2')?.value) throw { code: 'password_mismatch' };
-          Object.assign(opts, { includeKey: true, password: pw });
-        }
-        await downloadBackup(opts); lastBackup = (await db.getMeta('lastBackupAt')) || lastBackup; msg.backup = { text: t('settings.backup.exported') }; });
-    } else if (a === 'link') guard('link', async () => { await linkFile(); });
-    else if (a === 'reconnect') guard('link', async () => { await reconnect(); });
-    else if (a === 'unlink') guard('link', async () => { await unlinkFile(); auto = null; });
+    if (a === 'test') testConnect();
+    else if (a === 'copy-cmd') {
+      navigator.clipboard?.writeText(SGDB_CMD).then(() => { b.textContent = t('connect.sgdb.copied'); }).catch(() => {});
+    } else if (a === 'connect-clear') {
+      Promise.all([db.setMeta('steamKey', null), db.setMeta('steamId', null), db.setMeta('workerUrl', null)])
+        .then(() => { workerUrl = ''; steamId = ''; hasKey = false; sgdb = null; delete connDraft.worker; delete connDraft.id; msg.test = null; msg.connect = { text: t('connect.cleared') }; render('#s-worker'); })
+        .catch((err) => { msg.connect = { error: err?.code || 'idb_unavailable' }; render(); });
+    }
   });
 
-  root.addEventListener('change', (e) => {
-    if (e.target.id === 's-bk-key') { withKey = e.target.checked; render(withKey ? '#s-bk-pw' : '#s-bk-key'); return; }
-    if (e.target.id !== 's-bk' || !e.target.files[0]) return;
-    const file = e.target.files[0];
-    importing = true;
-    const host = root.querySelector('[data-role="backup-import"]');
-    mountBackupImport(host, file, { onCancel: () => { host.replaceChildren(); importing = false; e.target.value = ''; }, onDone: () => { load(false); } });
-    host.querySelector('button')?.focus();
-  });
-  root.addEventListener('keydown', (e) => {
-    const l = e.target.closest?.('[data-role="file-label"]');
-    if (l && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); root.querySelector('#s-bk').click(); }
-  });
-
-  const offAuto = fsAccessSupported() ? onAutoSave((r) => { auto = r; if (!disposed && !importing) load(); }) : () => {};
   render();
   load();
-  return () => { disposed = true; offAuto(); };
+  return () => { disposed = true; };
 }

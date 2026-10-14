@@ -351,3 +351,11 @@ dialog.help::backdrop { background-color: var(--overlay); }
   .lrow__time { grid-area: time; align-self: end; }
   .lrow__last { display: none; }
 }
+
+/* ---- Botão Adicionar com menu (Biblioteca) ---- */
+.view-head .menu { flex: none; }
+.menu__panel--add { min-width: 280px; }
+.menu__item--two { align-items: flex-start; padding-block: var(--sp-4); min-height: 56px; text-transform: none; letter-spacing: 0.04em; }
+.menu__item--two .icon { margin-top: 2px; flex: none; }
+.menu__item--two > span { display: grid; gap: 2px; }
+.menu__title { font-family: var(--font-display); font-weight: 600; font-size: 15px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-primary); }

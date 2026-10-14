@@ -9,9 +9,10 @@ import { steamCoverUrl, workerEndpoint } from './steam.js';
 
 /**
  * @typedef {object} CoverItem
- * @property {number} appid
+ * @property {number|null} appid appid da Steam (null quando a capa vem do SteamGridDB)
  * @property {string} name
  * @property {string} coverUrl
+ * @property {'steam'|'sgdb'} [source] padrão `steam`
  */
 
 /**
@@ -30,6 +31,7 @@ import { steamCoverUrl, workerEndpoint } from './steam.js';
  *   chamado quando o 1º resultado não tem o mesmo título; devolve o item escolhido ou `null` para pular
  * @property {AbortSignal} [signal] cancela a fila (o que já foi decidido é salvo)
  * @property {number} [delayMs] intervalo entre requisições (padrão 300)
+ * @property {boolean} [sgdb] se a Steam não achar o jogo (ou o título não bater), tenta também o SteamGridDB (padrão false)
  * @property {boolean} [force] também refaz jogos que já têm `coverUrl` (nunca os com `coverManual`)
  * @property {(updated: Game[]) => Promise<void>} [save] grava os jogos alterados (padrão: `db.putGames`)
  */
@@ -109,6 +111,69 @@ export async function searchCover(title, workerUrl, signal) {
 }
 
 /**
+ * Busca capas no SteamGridDB (`GET {workerUrl}/sgdb/search?term=`). Devolve `null` se o Worker não tem a chave
+ * (`configured: false`) e `[]` em qualquer falha: o SteamGridDB é só a 2ª fonte e nunca atrapalha a Steam.
+ * @param {string} title
+ * @param {string} workerUrl
+ * @param {AbortSignal} [signal]
+ * @returns {Promise<CoverItem[]|null>}
+ */
+export async function searchSgdb(title, workerUrl, signal) {
+  const term = String(title ?? '').trim().slice(0, MAX_TERM).trim();
+  if (!term) return [];
+  try {
+    const res = await fetch(workerEndpoint(workerUrl, '/sgdb/search') + '?' + new URLSearchParams({ term }), { headers: { Accept: 'application/json' }, signal });
+    const body = await res.json();
+    if (!res.ok || !body) return [];
+    if (body.configured === false) return null;
+    if (!Array.isArray(body.items)) return [];
+    return body.items
+      .filter((/** @type {any} */ i) => typeof i?.coverUrl === 'string' && /^https:\/\//.test(i.coverUrl))
+      .map((/** @type {any} */ i) => ({ appid: null, name: String(i.name ?? ''), coverUrl: i.coverUrl, source: /** @type {'sgdb'} */ ('sgdb') }))
+      .slice(0, MAX_ITEMS);
+  } catch (err) {
+    if (/** @type {any} */ (err)?.name === 'AbortError') throw err;
+    return [];
+  }
+}
+
+/**
+ * O Worker tem a chave do SteamGridDB? (`on`/`off`; `unknown` se a consulta falhar).
+ * @param {string} workerUrl
+ * @returns {Promise<'on'|'off'|'unknown'>}
+ */
+export async function sgdbStatus(workerUrl) {
+  try {
+    const res = await fetch(workerEndpoint(workerUrl, '/sgdb/search') + '?' + new URLSearchParams({ term: 'a' }), { headers: { Accept: 'application/json' } });
+    const body = await res.json();
+    if (!res.ok) return 'unknown';
+    return body?.configured === false ? 'off' : 'on';
+  } catch { return 'unknown'; }
+}
+
+/**
+ * Steam primeiro; se a Steam não achar o título exato, junta os resultados do SteamGridDB (itens da Steam antes, sem
+ * repetir nome igual). Falha da Steam só propaga se o SteamGridDB também não trouxer nada.
+ * @param {string} title
+ * @param {string} workerUrl
+ * @param {AbortSignal} [signal]
+ * @returns {Promise<CoverItem[]>}
+ */
+export async function searchCoverAll(title, workerUrl, signal) {
+  /** @type {CoverItem[]} */ let steam = [];
+  /** @type {any} */ let steamErr = null;
+  try { steam = await searchCover(title, workerUrl, signal); } catch (err) {
+    if (/** @type {any} */ (err)?.name === 'AbortError') throw err;
+    steamErr = err;
+  }
+  const exact = steam.length > 0 && normalizeTitle(steam[0].name) === normalizeTitle(title);
+  const other = exact ? [] : (await searchSgdb(title, workerUrl, signal)) ?? [];
+  if (steamErr && !other.length) throw steamErr;
+  const seen = new Set(steam.map((i) => normalizeTitle(i.name)));
+  return [...steam, ...other.filter((i) => !seen.has(normalizeTitle(i.name)))].slice(0, MAX_ITEMS + 2);
+}
+
+/**
  * Espera `ms`, acordando antes se o sinal abortar.
  * @param {number} ms
  * @param {AbortSignal} [signal]
@@ -137,7 +202,7 @@ function sleep(ms, signal) {
  * @returns {Promise<QueueCoversResult>}
  */
 export async function queueCovers(games, options) {
-  const { workerUrl, onProgress, onAmbiguous, signal, delayMs = 300, force = false, save = putGames } = options;
+  const { workerUrl, onProgress, onAmbiguous, signal, delayMs = 300, force = false, sgdb = false, save = putGames } = options;
   /** @type {QueueCoversResult} */
   const result = { updated: [], skipped: 0, notFound: 0, failed: 0, cancelled: false };
   /** @type {Game[]} */
@@ -177,7 +242,7 @@ export async function queueCovers(games, options) {
         if (signal?.aborted) { result.cancelled = true; break; }
         requested = true;
         try {
-          const items = await searchCover(copy.title, workerUrl, signal);
+          const items = sgdb ? await searchCoverAll(copy.title, workerUrl, signal) : await searchCover(copy.title, workerUrl, signal);
           consecutiveFailures = 0;
           /** @type {CoverItem|null} */
           let pick = null;
@@ -195,7 +260,7 @@ export async function queueCovers(games, options) {
           }
           if (pick) {
             copy.coverUrl = pick.coverUrl;
-            copy.coverAppId = pick.appid;
+            copy.coverAppId = pick.appid ?? null;
             if (outcome === 'ambiguous-resolved') copy.coverManual = true;
             copy.updatedAt = new Date().toISOString();
             result.updated.push(copy); unsaved.push(copy);

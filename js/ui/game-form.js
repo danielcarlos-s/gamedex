@@ -3,7 +3,7 @@ import { icon } from '../icons.js';
 import { db } from '../data-source.js';
 import { createGame, createOwnership, normalizeTitle, recalcTotals, validateGame, splitOwnership, isStoreId } from '../data/model.js';
 import { allStoreIds } from '../data/stores.js';
-import { searchCover } from '../importers/covers.js';
+import { searchCoverAll } from '../importers/covers.js';
 import { WORKER_URL } from '../config.js';
 import { esc, bindCoverFallback, storeLabel } from './grid.js';
 import { STATUS_ORDER } from './filters.js';
@@ -295,7 +295,7 @@ export async function mountGameForm(root, id, opts = {}) {
     try {
       const url = await workerUrl();
       if (!url) throw { code: 'worker_not_configured' };
-      cover.items = await searchCover(term, url);
+      cover.items = await searchCoverAll(term, url);
     } catch (e) {
       cover.error = e?.code || 'network';
     }

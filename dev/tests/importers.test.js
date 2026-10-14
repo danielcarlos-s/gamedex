@@ -367,3 +367,19 @@ test('csv/lojas: arquivo SEM a coluna store usa a loja padrão; sem padrão é e
   // loja padrão inválida é ignorada (não vira loja fantasma)
   assert.deepEqual(parseCsv('title\nA\n', { defaultStore: 'xbox' }).errors, [{ row: 1, code: 'csv_missing_store' }]);
 });
+
+test('covers: searchCoverAll junta o SteamGridDB quando a Steam não acha o título exato; sem chave segue só com a Steam', async () => {
+  const { searchCoverAll } = await import('../../js/importers/covers.js');
+  const stub = (/** @type {object} */ sgdb) => (/** @type {string} */ u) => u.includes('/sgdb/search') ? jsonRes(sgdb) : jsonRes({ items: [item(7, 'Hades II')] });
+  await withFetch(stub({ configured: true, items: [{ name: 'Hades', coverUrl: 'https://cdn2.steamgriddb.com/g.png' }, { name: 'Hades II', coverUrl: 'https://cdn2.steamgriddb.com/dup.png' }] }), async () => {
+    const r = await searchCoverAll('Hades', 'https://w.test');
+    assert.deepEqual(r.map((i) => [i.name, i.appid]), [['Hades II', 7], ['Hades', null]], 'sem nome repetido; SGDB sem appid');
+  });
+  await withFetch(stub({ items: [], configured: false }), async () => {
+    assert.equal((await searchCoverAll('Hades', 'https://w.test')).length, 1);
+  });
+  const calls = await withFetch(stub({ items: [] }), async () => {
+    await searchCoverAll('Hades II', 'https://w.test');
+  });
+  assert.equal(calls.length, 1, 'título exato na Steam não consulta o SteamGridDB');
+});

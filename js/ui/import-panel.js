@@ -8,23 +8,24 @@ import { queueCovers } from '../importers/covers.js';
 import { WORKER_URL } from '../config.js';
 import { esc, storeLabel, storeChip } from './grid.js';
 import { allStoreIds, customStoreFromText } from '../data/stores.js';
-import { mountBackupImport } from './backup-flow.js';
+import { handoff } from './backup-flow.js';
 
 const MAX_ERRORS_SHOWN = 100;
 
 /**
  * Tela #/import. Fluxo: escolher fonte → preview do planMerge (nada grava) → confirmar → (opcional) buscar capas.
  * @param {HTMLElement} root
+ * @param {URLSearchParams} [query] `csv=1` leva direto ao envio de arquivo; `store=<id>` pré-seleciona a loja
  * @returns {() => void} limpeza
  */
-export function mountImport(root) {
-  let phase = 'idle'; // idle | working | preview | applying | done | backup
+export function mountImport(root, query) {
+  let phase = 'idle'; // idle | working | preview | applying | done
   let error = null;
   let pending = null; // { plan, parseErrors, source, steam }
   let doneInfo = null;
-  let backupFile = null;
+  let steamReady = false; // Worker + SteamID + chave preenchidos
   let lastSync = null;
-  let defaultStore = ''; // loja usada nas linhas do CSV sem loja (ou em todas, se o CSV não tiver a coluna)
+  let defaultStore = allStoreIds().includes(query?.get('store')) ? query.get('store') : ''; // loja usada nas linhas do CSV sem loja (ou em todas, se o CSV não tiver a coluna)
   let covers = { missing: 0, running: false, done: 0, total: 0, result: null, error: null, choice: null };
   let abort = null;
   let disposed = false;
@@ -51,7 +52,10 @@ export function mountImport(root) {
         <h2 class="t-section">${esc(t('import.steam.title'))}</h2>
         <p class="t-body measure">${esc(t('import.steam.text'))}</p>
         <p class="t-body">${lastSync ? esc(t('import.steam.last', { date: formatDate(lastSync, { dateStyle: 'medium', timeStyle: 'short' }) })) : esc(t('import.steam.never'))}</p>
-        <div class="row"><button type="button" class="btn btn--primary cut-a-8 is-chamfered" data-act="steam">${esc(t('import.steam.button'))}</button></div>
+        <p class="t-data">${steamReady ? icon('check') : ''} ${esc(t(steamReady ? 'connect.status.ok' : 'connect.status.pending.short'))}</p>
+        <div class="row">${steamReady
+          ? `<button type="button" class="btn btn--primary cut-a-8 is-chamfered" data-act="steam">${esc(t('import.steam.button'))}</button>`
+          : `<a class="btn btn--primary cut-a-8 is-chamfered" href="#/settings">${esc(t('import.open.settings'))}</a>`}</div>
       </section>
       <section class="panel stack">
         <h2 class="t-section">${esc(t('import.file.title'))}</h2>
@@ -146,14 +150,12 @@ export function mountImport(root) {
     if (phase === 'working' || phase === 'applying' && !pending) body = `<div class="state panel panel--live" role="status"><div class="loader"></div><span class="t-label">${esc(t('state.loading'))}</span></div>`;
     else if (phase === 'preview' || phase === 'applying') body = previewHtml();
     else if (phase === 'done') body = doneHtml();
-    else if (phase === 'backup') body = '<div data-role="backup"></div>';
     else body = (error ? `<div class="panel state--error stack" role="alert"><span class="row">${icon('alert')}<strong>${esc(t('state.error.title'))}</strong></span><p class="t-body">${esc(t('err.' + error))}</p>${(error === 'misconfigured' || error === 'steam_no_credentials' || error === 'worker_not_configured') ? `<a class="btn cut-a-8 is-chamfered" href="#/settings">${esc(t('import.open.settings'))}</a>` : ''}</div>` : '') + idleHtml();
     root.innerHTML = `${head}<div class="stack">${body}</div>`;
-    if (phase === 'backup') mountBackupImport(root.querySelector('[data-role="backup"]'), backupFile, { onCancel: reset });
     if (focusSel) root.querySelector(focusSel)?.focus();
   }
 
-  function reset() { phase = 'idle'; error = null; pending = null; backupFile = null; render(); }
+  function reset() { phase = 'idle'; error = null; pending = null; render(); }
 
   // ---------- fluxo ----------
   async function buildPreview(incoming, parseErrors, source, steam = false) {
@@ -187,7 +189,7 @@ export function mountImport(root) {
       if (head === '{' || head === '[') {
         let json;
         try { json = JSON.parse(text); } catch { throw { code: 'backup_invalid' }; }
-        if (json?.app === 'gamedex') { backupFile = file; phase = 'backup'; render(); return; }
+        if (json?.app === 'gamedex') { handoff.file = file; location.hash = '#/backup'; return; }
         if (json?.steam_cache) { await buildPreview(parseSteamCache(json), [], 'backup'); }
         else throw { code: 'backup_invalid' };
       } else {
@@ -228,6 +230,7 @@ export function mountImport(root) {
     try {
       covers.result = await queueCovers(games, {
         workerUrl: url,
+        sgdb: true,
         signal: abort.signal,
         onProgress: (p) => { covers.done = p.done; covers.total = p.total; if (!disposed) render(covers.choice ? null : '[data-act="cover-cancel"]'); },
         onAmbiguous: (game, items) => new Promise((resolve) => {
@@ -275,7 +278,11 @@ export function mountImport(root) {
     if (l && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); root.querySelector('#imp-file').click(); }
   });
 
-  db.getMeta('lastSteamSync').then((v) => { lastSync = v || null; if (!disposed && phase === 'idle') render(); }).catch(() => {});
-  render();
+  Promise.all([db.getMeta('lastSteamSync'), workerUrl(), steamCreds()]).then(([v, url, creds]) => {
+    lastSync = v || null; steamReady = !!(url && creds);
+    if (!disposed && phase === 'idle') render(csvFocus ? '[data-role="file-label"]' : null);
+  }).catch(() => {});
+  const csvFocus = query?.get('csv') === '1';
+  render(csvFocus ? '[data-role="file-label"]' : null);
   return () => { disposed = true; abort?.abort(); covers.choice?.resolve(null); };
 }

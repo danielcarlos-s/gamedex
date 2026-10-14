@@ -100,6 +100,20 @@ Para trocar a chave ou o SteamID depois, repita o passo 3 e depois o passo 4.
 
 Os testes automáticos do contrato ficam em `dev/tests/worker.test.js` e rodam com `node dev/test-node.mjs`.
 
+## Capas extras com o SteamGridDB (opcional)
+
+Para achar capas de jogos que a Steam não tem (Epic, GOG, etc.), o Worker pode consultar o [SteamGridDB](https://www.steamgriddb.com):
+
+1. Entre no SteamGridDB com a sua conta e crie uma chave em <https://www.steamgriddb.com/profile/preferences/api>.
+2. Grave a chave no seu Worker, na pasta `worker`:
+   ```
+   npx wrangler secret put STEAMGRIDDB_KEY
+   ```
+   (ou, no painel da Cloudflare: seu Worker → Configurações → Variáveis e segredos → adicionar o segredo `STEAMGRIDDB_KEY`).
+3. No app, em Ajustes → Conectar Steam, use **Testar conexão**: aparece "SteamGridDB: ativo no seu Worker".
+
+A busca da Steam continua sendo a primeira; o SteamGridDB só entra quando a Steam não acha o título exato. Sem a chave, nada muda. A rota é `GET /sgdb/search?term=...` e responde `{ "items": [], "configured": false }` quando não há chave.
+
 ## Erros que o app mostra
 
 | Código | Significa | O que fazer |

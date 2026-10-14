@@ -4,6 +4,9 @@ import { importBackup, backupHasKey } from '../data/backup.js';
 import { esc } from './grid.js';
 import { applyTheme } from '../theme.js';
 
+/** Arquivo de backup escolhido em Importar: a tela Backup o pega aqui ao abrir. */
+export const handoff = { /** @type {File|null} */ file: null };
+
 /**
  * Painel de importação de backup: escolher Mesclar ou Substituir e confirmar. Nada é gravado antes do clique.
  * "Substituir" exige uma segunda confirmação in-page (sem confirm()).

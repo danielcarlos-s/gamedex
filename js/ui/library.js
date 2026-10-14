@@ -3,12 +3,19 @@ import { icon } from '../icons.js';
 import { db } from '../data-source.js';
 import { renderGrid, bindCoverFallback, esc } from './grid.js';
 import { allStoreIds } from '../data/stores.js';
+import { initDisclosure } from '../menu.js';
 import { parseState, stateToHash, runFilters, sortGames, buildPanel } from './filters.js';
 
 const shell = () => `
   <div class="view-head">
     <h1 class="t-heading" tabindex="-1" data-i18n="library.title"></h1>
-    <a class="btn btn--primary cut-a-8 is-chamfered" href="#/game/new" data-role="add">${icon('plus')}<span>${esc(t('library.add'))}</span></a>
+    <div class="menu" data-menu>
+      <button type="button" class="btn btn--primary cut-a-8 is-chamfered" data-menu-btn aria-expanded="false" aria-controls="add-menu" aria-haspopup="true">${icon('plus')}<span>${esc(t('library.add.menu'))}</span>${icon('chevron')}</button>
+      <div id="add-menu" class="menu__panel menu__panel--add panel" hidden>
+        <a class="menu__item menu__item--two" href="#/game/new" data-role="add">${icon('plus')}<span><span class="menu__title">${esc(t('library.add.manual'))}</span><span class="t-hint">${esc(t('library.add.manual.hint'))}</span></span></a>
+        <a class="menu__item menu__item--two" href="#/import?csv=1" data-role="add-csv">${icon('upload')}<span><span class="menu__title">${esc(t('library.add.csv'))}</span><span class="t-hint">${esc(t('library.add.csv.hint'))}</span></span></a>
+      </div>
+    </div>
   </div>
   <section class="panel panel--live" data-role="filters" aria-label="" data-i18n-attr="aria-label:filters.title" hidden></section>
   <section id="lib-panel" role="tabpanel" data-role="body"></section>`;
@@ -43,6 +50,8 @@ export function mountLibrary(root, query) {
   const filtersRoot = root.querySelector('[data-role="filters"]');
   const body = root.querySelector('[data-role="body"]');
   const addLink = root.querySelector('[data-role="add"]');
+  const addCsv = root.querySelector('[data-role="add-csv"]');
+  const offMenu = initDisclosure(root.querySelector('[data-menu]'));
   bindCoverFallback(body);
   const state = parseState(query);
   let disposed = false;
@@ -57,6 +66,7 @@ export function mountLibrary(root, query) {
     sortGames(result, state);
     // com UMA loja filtrada, "Adicionar jogo" já abre o formulário nessa loja
     addLink.href = state.store ? `#/game/new?store=${encodeURIComponent(state.store)}` : '#/game/new';
+    addCsv.href = state.store ? `#/import?csv=1&store=${encodeURIComponent(state.store)}` : '#/import?csv=1';
     panel?.update(state, counts, result.length, games.length);
     if (!games.length) { body.innerHTML = emptyHtml(); return; }
     if (!result.length) {
@@ -95,5 +105,5 @@ export function mountLibrary(root, query) {
 
   const off = db.onChange((ev) => { if (!ev || ev.type === 'games') load(); });
   load();
-  return () => { disposed = true; off(); panel?.destroy(); };
+  return () => { disposed = true; off(); offMenu(); panel?.destroy(); };
 }

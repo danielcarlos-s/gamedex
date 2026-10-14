@@ -169,3 +169,32 @@ test('worker: preflight permite os cabeçalhos X-Steam-Key e X-Steam-Id', async 
   const h = r.headers.get('Access-Control-Allow-Headers') || '';
   assert.ok(h.includes('X-Steam-Key') && h.includes('X-Steam-Id'));
 });
+
+test('worker: /sgdb/search sem o secret → 200 configured:false e nenhuma chamada externa', async () => {
+  const calls = await withFetch(() => jsonRes({}), async () => {
+    const r = await handle(req('/sgdb/search?term=Hades'), env);
+    assert.equal(r.status, 200);
+    assert.deepEqual(await r.json(), { items: [], configured: false });
+    assert.equal((await handle(req('/sgdb/search?term='), env)).status, 400);
+  });
+  assert.equal(calls.length, 0);
+});
+test('worker: /sgdb/search com o secret → até 3 jogos com a 1ª capa https; chave só no cabeçalho', async () => {
+  const KEY2 = 'SGDBSECRET';
+  const seen = [];
+  const calls = await withFetch((u) => {
+    if (u.includes('/search/autocomplete/')) return jsonRes({ success: true, data: [1, 2, 3, 4].map((id) => ({ id, name: `Jogo ${id}` })) });
+    const id = Number(u.match(/\/grids\/game\/(\d+)/)[1]);
+    return id === 2 ? jsonRes({ data: [] }) : jsonRes({ data: [{ url: `https://cdn2.steamgriddb.com/grid/${id}.png` }] });
+  }, async () => {
+    const r = await handle(req('/sgdb/search?term=' + encodeURIComponent('Jogo X')), { ...env, STEAMGRIDDB_KEY: KEY2 });
+    assert.equal(r.status, 200);
+    const b = await r.json();
+    assert.equal(b.configured, true);
+    assert.deepEqual(b.items.map((i) => i.sgdbId), [1, 3]);
+    assert.equal(b.items[0].coverUrl, 'https://cdn2.steamgriddb.com/grid/1.png');
+    seen.push(JSON.stringify(b));
+  });
+  assert.equal(calls.length, 4, '1 busca + 3 grids');
+  assert.ok(calls.every((u) => !u.includes(KEY2)) && !seen[0].includes(KEY2));
+});

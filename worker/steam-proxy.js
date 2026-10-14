@@ -6,12 +6,15 @@
 //                             mandar X-Steam-Key + X-Steam-Id, as credenciais DELE (nunca gravadas, nunca em log,
 //                             sem cache de borda).
 //   /steam/search?term=...  → busca de capa (store.steampowered.com/api/storesearch)
+//   /sgdb/search?term=...   → busca de capa no SteamGridDB (2ª fonte). Só funciona se o dono gravou o secret
+//                             STEAMGRIDDB_KEY; sem ele responde { items: [], configured: false }.
 // Erros: { "error": "<codigo>" } com os códigos da seção 6.4.
 
 /**
  * @typedef {object} Env
  * @property {string} [STEAM_API_KEY] secret
  * @property {string} [STEAM_ID] secret
+ * @property {string} [STEAMGRIDDB_KEY] secret (opcional): chave da API do SteamGridDB
  * @property {string} [ALLOWED_ORIGINS] origens permitidas, separadas por vírgula
  */
 
@@ -19,6 +22,8 @@ const OWNED_TTL = 10 * 60; // 10 min
 const SEARCH_TTL = 7 * 24 * 60 * 60; // 7 dias
 const MAX_TERM = 100;
 const MAX_ITEMS = 10; // o app filtra DLC/pacotes e fica com até 5
+const SGDB_API = 'https://www.steamgriddb.com/api/v2';
+const SGDB_GAMES = 3; // jogos candidatos por busca (1 requisição de capa cada)
 const KEY_RE = /^[0-9A-Fa-f]{32}$/;
 const ID_RE = /^\d{17}$/;
 const COVER = (/** @type {number} */ appid) => `https://cdn.cloudflare.steamstatic.com/steam/apps/${appid}/library_600x900_2x.jpg`;
@@ -149,6 +154,57 @@ async function search(url, headers) {
 }
 
 /**
+ * GET na API do SteamGridDB com a chave do dono. Devolve `data` (lista) ou lança `{ code: 'steam_upstream' }`.
+ * @param {string} path
+ * @param {string} key
+ * @returns {Promise<any[]>}
+ */
+async function sgdbGet(path, key) {
+  let res;
+  try {
+    res = await fetch(SGDB_API + path, {
+      headers: { Accept: 'application/json', Authorization: `Bearer ${key}` },
+      cf: { cacheEverything: true, cacheTtlByStatus: { '200-299': SEARCH_TTL, '400-599': 0 } },
+    });
+  } catch {
+    throw { code: 'steam_upstream' };
+  }
+  if (!res.ok) throw { code: 'steam_upstream' };
+  try {
+    const body = await res.json();
+    return Array.isArray(body?.data) ? body.data : [];
+  } catch {
+    throw { code: 'steam_upstream' };
+  }
+}
+
+/**
+ * /sgdb/search: até 3 jogos do SteamGridDB, cada um com a 1ª capa retrato (600x900 ou 342x482) estática.
+ * Jogo sem capa retrato fica de fora. Sem o secret: 200 com `configured: false` (o app segue só com a Steam).
+ * @param {URL} url
+ * @param {Env} env
+ * @param {Record<string, string>} headers
+ * @returns {Promise<Response>}
+ */
+async function sgdbSearch(url, env, headers) {
+  const term = (url.searchParams.get('term') || '').trim();
+  if (!term || term.length > MAX_TERM) return json({ error: 'bad_request' }, 400, headers);
+  const key = (env.STEAMGRIDDB_KEY || '').trim();
+  if (!key) return json({ items: [], configured: false }, 200, headers);
+  const games = (await sgdbGet('/search/autocomplete/' + encodeURIComponent(term), key))
+    .filter((/** @type {any} */ g) => Number.isInteger(g?.id))
+    .slice(0, SGDB_GAMES);
+  const grids = await Promise.all(games.map((/** @type {any} */ g) =>
+    sgdbGet(`/grids/game/${g.id}?dimensions=600x900,342x482&types=static&nsfw=false&humor=false`, key).catch(() => [])));
+  const items = [];
+  for (let i = 0; i < games.length; i++) {
+    const grid = grids[i].find((/** @type {any} */ x) => typeof x?.url === 'string' && x.url.startsWith('https://'));
+    if (grid) items.push({ sgdbId: games[i].id, name: String(games[i].name ?? ''), coverUrl: grid.url });
+  }
+  return json({ items, configured: true }, 200, { ...headers, 'Cache-Control': `public, max-age=${SEARCH_TTL}` });
+}
+
+/**
  * Trata uma requisição. Exportado para teste; em produção o runtime chama `default.fetch`.
  * @param {Request} request
  * @param {Env} env
@@ -166,6 +222,7 @@ export async function handle(request, env) {
   try {
     if (url.pathname === '/steam/owned') return await owned(request, env, headers);
     if (url.pathname === '/steam/search') return await search(url, headers);
+    if (url.pathname === '/sgdb/search') return await sgdbSearch(url, env, headers);
     return json({ error: 'not_found' }, 404, headers);
   } catch (err) {
     // Só códigos conhecidos saem; qualquer outra falha vira 500 genérico, sem mensagem (poderia conter a key).
