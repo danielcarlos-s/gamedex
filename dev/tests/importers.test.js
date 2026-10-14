@@ -396,3 +396,30 @@ test('covers: a chave do SteamGridDB do usuário vai no cabeçalho X-Sgdb-Key', 
   } finally { globalThis.fetch = real; }
   assert.deepEqual(seen, ['abcdef0123456789abcdef0123456789', 'abcdef0123456789abcdef0123456789', undefined]);
 });
+
+test('details: completa só campos vazios (nunca troca o editado), conquistas só com credenciais, não achado não quebra', async () => {
+  const { queueDetails, gamesToComplete, steamAppId } = await import('../../js/importers/details.js');
+  const steam = (/** @type {string} */ title, /** @type {number} */ appid, /** @type {object} */ extra = {}) => createGame({ title, ownerships: [{ store: 'steam', storeGameId: String(appid) }], ...extra });
+  const a = steam('A', 1);
+  const b = steam('B', 2, { developer: 'Meu Estúdio', genres: ['Meu'], year: 1999 });
+  const c = steam('C', 3);
+  const gog = mk('D');
+  assert.equal(steamAppId(gog), null);
+  assert.deepEqual(gamesToComplete([a, b, c, gog], false).map((g) => g.title), ['A', 'C'], 'B está completo sem conquistas; GOG fica fora');
+  assert.deepEqual(gamesToComplete([a, b, c, gog], true).map((g) => g.title), ['A', 'B', 'C'], 'com credenciais, B ainda quer conquistas');
+  const saved = [];
+  await withFetch((u) => {
+    const id = new URL(u).searchParams.get('appid');
+    if (u.includes('/steam/details')) return id === '3' ? jsonRes({ appid: 3, found: false }) : jsonRes({ found: true, genres: ['Ação'], developer: 'Valve', year: 2011 });
+    return jsonRes({ done: 5, total: 10 });
+  }, async () => {
+    const res = await queueDetails([a, b, c], { workerUrl: 'https://w.test', delayMs: 0, creds: { key: 'k'.repeat(32), steamId: '7'.repeat(17) }, save: async (g) => { saved.push(...g); } });
+    assert.equal(res.updated, 3);
+    assert.equal(res.notFound, 1);
+  });
+  const sa = saved.find((g) => g.title === 'A'); const sb = saved.find((g) => g.title === 'B'); const sc = saved.find((g) => g.title === 'C');
+  assert.deepEqual([sa.developer, sa.year, sa.genres, sa.achievementsTotal], ['Valve', 2011, ['Ação'], 10]);
+  assert.deepEqual([sb.developer, sb.year, sb.genres, sb.achievementsDone], ['Meu Estúdio', 1999, ['Meu'], 5], 'campos editados preservados');
+  assert.deepEqual([sc.developer, sc.achievementsTotal], [null, 10], 'sem página na loja: só as conquistas');
+  assert.equal(a.developer, null, 'não muta a entrada');
+});

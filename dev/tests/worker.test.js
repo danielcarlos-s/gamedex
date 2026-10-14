@@ -218,3 +218,27 @@ test('worker: /sgdb/search aceita a chave do usuário no cabeçalho X-Sgdb-Key (
   assert.ok(auth.every((a) => a === 'Bearer ' + MINE), 'a chave do usuário vai ao SteamGridDB');
   assert.ok(calls.every((u) => !u.includes(MINE)));
 });
+
+test('worker: /steam/details → gêneros, desenvolvedora e ano; página inexistente → found:false; appid inválido → 400', async () => {
+  const calls = await withFetch((u) => u.includes('appids=620')
+    ? jsonRes({ 620: { success: true, data: { genres: [{ description: 'Ação' }, { description: 'Aventura' }], developers: ['Valve'], release_date: { date: '19 de abr. de 2011' } } } })
+    : jsonRes({ 999: { success: false } }), async () => {
+    const b = await (await handle(req('/steam/details?appid=620&lang=pt'), env)).json();
+    assert.deepEqual(b, { appid: 620, found: true, genres: ['Ação', 'Aventura'], developer: 'Valve', year: 2011 });
+    assert.deepEqual(await (await handle(req('/steam/details?appid=999'), env)).json(), { appid: 999, found: false });
+    assert.equal((await handle(req('/steam/details?appid=abc'), env)).status, 400);
+  });
+  assert.ok(calls[0].includes('l=brazilian') && calls[1].includes('l=english'));
+});
+test('worker: /steam/achievements conta feitas/total com as credenciais do cabeçalho; sem stats → 0/0; 403 → profile_private', async () => {
+  const hdr = { 'x-steam-key': 'abcdef0123456789abcdef0123456789', 'x-steam-id': '76561198000000000' };
+  const r0 = (/** @type {string} */ p) => /** @type {any} */ ({ method: 'GET', url: W + p, headers: { get: (/** @type {string} */ n) => n.toLowerCase() === 'origin' ? OK : /** @type {any} */ (hdr)[n.toLowerCase()] ?? null } });
+  await withFetch((u) => u.includes('appid=1') ? jsonRes({ playerstats: { achievements: [{ achieved: 1 }, { achieved: 0 }, { achieved: 1 }] } })
+    : u.includes('appid=2') ? jsonRes({ playerstats: { error: 'no stats' } }, 400) : jsonRes({}, 403), async () => {
+    assert.deepEqual(await (await handle(r0('/steam/achievements?appid=1'), env)).json(), { appid: 1, done: 2, total: 3 });
+    assert.deepEqual(await (await handle(r0('/steam/achievements?appid=2'), env)).json(), { appid: 2, done: 0, total: 0 });
+    const r = await handle(r0('/steam/achievements?appid=3'), env);
+    assert.equal(r.status, 409);
+    assert.deepEqual(await r.json(), { error: 'profile_private' });
+  });
+});

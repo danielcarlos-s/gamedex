@@ -1,9 +1,10 @@
-import { t, formatDate } from '../i18n/index.js';
+import { t, formatDate, getLang } from '../i18n/index.js';
 import { icon } from '../icons.js';
 import { db } from '../data-source.js';
 import { createGame, createOwnership, normalizeTitle, recalcTotals, validateGame, splitOwnership, isStoreId } from '../data/model.js';
 import { allStoreIds } from '../data/stores.js';
 import { searchCoverAll } from '../importers/covers.js';
+import { steamAppId, fetchStoreDetails, fetchAchievements, fillEmpty } from '../importers/details.js';
 import { WORKER_URL } from '../config.js';
 import { esc, bindCoverFallback, storeLabel } from './grid.js';
 import { STATUS_ORDER } from './filters.js';
@@ -33,6 +34,7 @@ export async function mountGameForm(root, id, opts = {}) {
   let disposed = false;
   let errors = {};
   let message = '';
+  let details = { loading: false };
   let confirmDelete = false;
   let cover = { open: false, loading: false, items: null, error: null, term: '' };
 
@@ -129,7 +131,7 @@ export async function mountGameForm(root, id, opts = {}) {
       else if (cover.error) panel += `<p class="field__error" role="alert">${esc(t('err.' + cover.error))}</p>`;
       else if (!cover.items.length) panel += `<p class="t-body" role="status">${esc(t('game.cover.none'))}</p>`;
       else panel += cover.items.map((it, i) => `<button type="button" class="cover-pick cut-a-6 is-chamfered" data-action="cover-pick" data-i="${i}" aria-label="${esc(t('game.cover.pick', { name: it.name }))}">
-          <img src="${esc(it.coverUrl)}" alt="" loading="lazy"><span>${esc(it.name)}</span></button>`).join('');
+          <img src="${esc(it.coverUrl)}" alt="" ${it.appid ? `data-appid="${esc(it.appid)}"` : ''} loading="lazy"><span>${esc(it.name)}</span></button>`).join('');
       panel += '</div>';
     }
     return `<div class="detail__cover cut-b-24">${img}</div>
@@ -199,6 +201,7 @@ export async function mountGameForm(root, id, opts = {}) {
               <button type="button" class="btn cut-a-6 is-chamfered" data-action="fav" aria-pressed="${!!draft.favorite}" aria-label="${esc(t('common.favorite'))}">${icon('heart', { filled: !!draft.favorite })}<span>${esc(t(draft.favorite ? 'game.fav.on' : 'game.fav.off'))}</span></button></div>
           </div>
           <div class="field"><span class="field__label" id="g-rating-l">${esc(t('game.field.rating'))}</span>${ratingHtml()}</div>
+          ${steamAppId(draft) != null ? `<div class="stack"><div class="row"><button type="button" class="btn cut-a-8 is-chamfered" data-action="details" ${details.loading ? 'disabled' : ''}>${esc(t(details.loading ? 'game.details.loading' : 'game.details.button'))}</button></div><p class="t-hint measure">${esc(t('game.details.hint'))}</p></div>` : ''}
           <div class="fgrid">
             ${field('g-developer', 'game.field.developer', `<input id="g-developer" class="input cut-a-6 is-chamfered" type="text" value="${esc(draft.developer ?? '')}">`, 'developer', errors)}
             ${field('g-year', 'game.field.year', `<input ${attrs('g-year', 'year', errors)} class="input cut-a-6 is-chamfered" type="number" min="0" step="1" inputmode="numeric" value="${draft.year ?? ''}">`, 'year', errors)}
@@ -329,6 +332,26 @@ export async function mountGameForm(root, id, opts = {}) {
         message = t('err.' + (e?.code || 'idb_unavailable'));
         render();
       }
+    },
+    details: async () => {
+      sync();
+      details = { loading: true };
+      render('[data-action="details"]');
+      try {
+        const url = await workerUrl();
+        if (!url) throw { code: 'worker_not_configured' };
+        const appid = steamAppId(draft);
+        const found = { ...(await fetchStoreDetails(appid, url, getLang())) };
+        const [key, steamId] = [await db.getMeta('steamKey').catch(() => null), await db.getMeta('steamId').catch(() => null)];
+        if (key && steamId) found.achievements = await fetchAchievements(appid, url, { key, steamId }).catch(() => null);
+        const next = fillEmpty(draft, found);
+        if (next) { Object.assign(draft, { genres: next.genres, developer: next.developer, year: next.year, achievementsDone: next.achievementsDone, achievementsTotal: next.achievementsTotal }); message = t('game.details.done'); }
+        else message = t(found.found ? 'game.details.nothing' : 'game.details.notfound');
+      } catch (e) {
+        message = t('err.' + (e?.code || 'network'));
+      }
+      details = { loading: false };
+      if (!disposed) render('[data-action="details"]');
     },
     'cover-search': () => searchCovers(false),
     'cover-research': () => searchCovers(true),

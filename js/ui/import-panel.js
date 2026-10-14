@@ -5,8 +5,9 @@ import { planMerge, applyMerge } from '../data/model.js';
 import { fetchOwned, parseSteamCache } from '../importers/steam.js';
 import { parseCsv, templateCsv } from '../importers/csv.js';
 import { queueCovers } from '../importers/covers.js';
+import { queueDetails, gamesToComplete } from '../importers/details.js';
 import { WORKER_URL } from '../config.js';
-import { esc, storeLabel, storeChip } from './grid.js';
+import { esc, storeLabel, storeChip, bindCoverFallback } from './grid.js';
 import { allStoreIds, customStoreFromText } from '../data/stores.js';
 import { handoff } from './backup-flow.js';
 
@@ -28,7 +29,10 @@ export function mountImport(root, query) {
   let defaultStore = allStoreIds().includes(query?.get('store')) ? query.get('store') : ''; // loja usada nas linhas do CSV sem loja (ou em todas, se o CSV não tiver a coluna)
   let covers = { missing: 0, running: false, done: 0, total: 0, result: null, error: null, choice: null };
   let abort = null;
+  let info = { missing: 0, running: false, done: 0, total: 0, result: null, error: null };
+  let abortInfo = null;
   let disposed = false;
+  bindCoverFallback(root); // opção de capa sem imagem some da lista de escolha
 
   const stat = (key, n) => `<div class="stat"><span class="stat__n">${esc(formatNumber(n))}</span><span class="t-label">${esc(t('import.stat.' + key))}</span></div>`;
 
@@ -58,6 +62,7 @@ export function mountImport(root, query) {
           : `<a class="btn btn--primary cut-a-8 is-chamfered" href="#/settings">${esc(t('import.open.settings'))}</a>`}</div>
       </section>
       ${coversHtml()}
+      ${detailsHtml()}
       <section class="panel stack">
         <h2 class="t-section">${esc(t('import.file.title'))}</h2>
         <p class="t-body measure">${esc(t('import.file.text'))}</p>
@@ -116,7 +121,7 @@ export function mountImport(root, query) {
         <p class="t-data">${esc(t('import.covers.progress', { done: formatNumber(c.done), total: formatNumber(c.total) }))}</p>
         ${c.choice ? `<div class="panel confirm" role="group" aria-labelledby="cv-t">
           <h3 class="state__title" id="cv-t">${esc(t('import.covers.ambiguous', { title: c.choice.game.title }))}</h3>
-          <div class="cover-results">${c.choice.items.map((it, i) => `<button type="button" class="cover-pick cut-a-6 is-chamfered" data-act="cover-choose" data-i="${i}" aria-label="${esc(t('game.cover.pick', { name: it.name }))}"><img src="${esc(it.coverUrl)}" alt="" loading="lazy"><span>${esc(it.name)}</span></button>`).join('')}</div>
+          <div class="cover-results">${c.choice.items.map((it, i) => `<button type="button" class="cover-pick cut-a-6 is-chamfered" data-act="cover-choose" data-i="${i}" aria-label="${esc(t('game.cover.pick', { name: it.name }))}"><img src="${esc(it.coverUrl)}" alt="" ${it.appid ? `data-appid="${esc(it.appid)}"` : ''} loading="lazy"><span>${esc(it.name)}</span></button>`).join('')}</div>
           <div class="row"><button type="button" class="btn cut-a-8 is-chamfered" data-act="cover-skip">${esc(t('import.covers.skip'))}</button></div></div>` : ''}
         <div class="row"><button type="button" class="btn cut-a-8 is-chamfered" data-act="cover-cancel">${esc(t('import.covers.cancel'))}</button></div>
       </section>`;
@@ -137,6 +142,33 @@ export function mountImport(root, query) {
       <div class="row"><button type="button" class="btn cut-a-8 is-chamfered" data-act="cover-start">${esc(t('import.covers.start'))}</button></div></section>`;
   }
 
+  function detailsHtml() {
+    const d = info;
+    if (d.running) {
+      const pct = d.total ? Math.round((d.done / d.total) * 100) : 0;
+      return `<section class="panel stack" aria-live="polite">
+        <h2 class="t-section">${esc(t('import.details.title'))}</h2>
+        <div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="${d.total}" aria-valuenow="${d.done}" aria-label="${esc(t('import.details.title'))}"><span style="width:${pct}%"></span></div>
+        <p class="t-data">${esc(t('import.details.progress', { done: formatNumber(d.done), total: formatNumber(d.total) }))}</p>
+        <div class="row"><button type="button" class="btn cut-a-8 is-chamfered" data-act="details-cancel">${esc(t('import.covers.cancel'))}</button></div>
+      </section>`;
+    }
+    if (d.result) {
+      const r = d.result;
+      return `<section class="panel stack" role="status"><h2 class="t-section">${esc(t('import.details.title'))}</h2>
+        <p class="t-body">${esc(t(r.cancelled ? 'import.details.result.cancelled' : 'import.details.result', { updated: formatNumber(r.updated), notFound: formatNumber(r.notFound), failed: formatNumber(r.failed) }))}</p>
+        ${d.error ? `<p class="field__error" role="alert">${icon('alert')} ${esc(t('err.' + d.error))}</p>` : ''}
+        ${d.missing ? `<p class="t-body measure">${esc(t('import.details.remaining', { n: formatNumber(d.missing) }))}</p>
+        <div class="row"><button type="button" class="btn cut-a-8 is-chamfered" data-act="details-start">${esc(t('import.details.retry'))}</button></div>` : ''}</section>`;
+    }
+    if (d.error) return `<section class="panel stack"><p class="field__error" role="alert">${icon('alert')} ${esc(t('err.' + d.error))}</p></section>`;
+    if (!d.missing) return '';
+    return `<section class="panel stack">
+      <h2 class="t-section">${esc(t('import.details.title'))}</h2>
+      <p class="t-body measure">${esc(t('import.details.text', { n: formatNumber(d.missing) }))}</p>
+      <div class="row"><button type="button" class="btn cut-a-8 is-chamfered" data-act="details-start">${esc(t('import.details.start'))}</button></div></section>`;
+  }
+
   function doneHtml() {
     const c = doneInfo;
     return `<section class="panel panel--live stack" role="status">
@@ -144,7 +176,7 @@ export function mountImport(root, query) {
         <div class="stats">${stat('new', c.new)}${stat('updated', c.updated)}${stat('merged', c.merged)}</div>
         <div class="row"><a class="btn btn--primary cut-a-8 is-chamfered" href="#/">${esc(t('import.go.library'))}</a>
         <button type="button" class="btn btn--ghost cut-a-8 is-chamfered" data-act="again">${esc(t('import.again'))}</button></div>
-      </section>${coversHtml()}`;
+      </section>${coversHtml()}${detailsHtml()}`;
   }
 
   function render(focusSel) {
@@ -224,6 +256,32 @@ export function mountImport(root, query) {
     return (await db.getAllGames()).filter(needsCover).length;
   }
 
+  async function countMissingDetails() {
+    if (!(await workerUrl())) return 0;
+    return gamesToComplete(await db.getAllGames(), !!(await steamCreds())).length;
+  }
+
+  async function startDetails() {
+    const url = await workerUrl();
+    const creds = await steamCreds();
+    const games = gamesToComplete(await db.getAllGames(), !!creds);
+    abortInfo = new AbortController();
+    info = { ...info, running: true, done: 0, total: games.length, result: null, error: null };
+    render('[data-act="details-cancel"]');
+    try {
+      info.result = await queueDetails(games, {
+        workerUrl: url, lang: getLang(), creds, signal: abortInfo.signal,
+        onProgress: (p) => { info.done = p.done; info.total = p.total; if (!disposed) render('[data-act="details-cancel"]'); },
+      });
+    } catch (e) {
+      info.error = e?.code || 'network';
+      info.result = { updated: 0, unchanged: 0, notFound: 0, failed: 0, cancelled: true };
+    }
+    info.running = false; abortInfo = null;
+    info.missing = await countMissingDetails().catch(() => 0);
+    if (!disposed) render();
+  }
+
   async function startCovers() {
     const url = await workerUrl();
     const games = (await db.getAllGames()).filter(needsCover);
@@ -269,6 +327,8 @@ export function mountImport(root, query) {
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
     else if (a === 'cover-start') startCovers();
+    else if (a === 'details-start') startDetails();
+    else if (a === 'details-cancel') abortInfo?.abort();
     else if (a === 'cover-cancel') abort?.abort();
     else if (a === 'cover-choose') { const ch = covers.choice; covers.choice = null; ch.resolve(ch.items[Number(b.dataset.i)]); render('[data-act="cover-cancel"]'); }
     else if (a === 'cover-skip') { const ch = covers.choice; covers.choice = null; ch.resolve(null); render('[data-act="cover-cancel"]'); }
@@ -287,8 +347,9 @@ export function mountImport(root, query) {
     lastSync = v || null; steamReady = !!(url && creds);
     if (!disposed && phase === 'idle') render(csvFocus ? '[data-role="file-label"]' : null);
   }).catch(() => {});
+  countMissingDetails().then((n) => { info.missing = n; if (!disposed && phase === 'idle' && !info.running) render(); }).catch(() => {});
   countMissingCovers().then((n) => { covers.missing = n; if (!disposed && phase === 'idle' && !covers.running) render(); }).catch(() => {});
   const csvFocus = query?.get('csv') === '1';
   render(csvFocus ? '[data-role="file-label"]' : null);
-  return () => { disposed = true; abort?.abort(); covers.choice?.resolve(null); };
+  return () => { disposed = true; abort?.abort(); abortInfo?.abort(); covers.choice?.resolve(null); };
 }

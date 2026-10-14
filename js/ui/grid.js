@@ -86,7 +86,11 @@ export function renderGrid(games, mode = 'grid') {
   return el;
 }
 
-/** Fallback de capa (6.2): library_600x900_2x → header.jpg → placeholder. Ligar uma vez por container. */
+/**
+ * Fallback de capa (6.2): library_600x900_2x → header.jpg → placeholder. Nas listas de escolha de capa (`.cover-pick`),
+ * a opção cuja imagem não existe de jeito nenhum (DLC, manual, trilha) é removida em vez de mostrar imagem quebrada.
+ * Ligar uma vez por container.
+ */
 export function bindCoverFallback(container) {
   container.addEventListener('error', (e) => {
     const img = e.target;
@@ -97,6 +101,8 @@ export function bindCoverFallback(container) {
       img.src = `https://cdn.cloudflare.steamstatic.com/steam/apps/${encodeURIComponent(appid)}/header.jpg`;
       return;
     }
+    const pick = img.closest('.cover-pick');
+    if (pick) { pick.remove(); return; }
     const title = img.dataset.title ?? img.closest('.card, .lrow')?.querySelector('.card__title, .lrow__title')?.textContent ?? '';
     const ph = document.createElement('div');
     ph.className = 'cover-ph';

@@ -9,6 +9,8 @@
 //   /sgdb/search?term=...   → busca de capa no SteamGridDB (2ª fonte). Só funciona se o dono gravou o secret
 //                             X-Sgdb-Key (enviado pelo app, nunca gravado nem em log) ou o secret opcional STEAMGRIDDB_KEY;
 //                             sem nenhum dos dois responde { items: [], configured: false }.
+//   /steam/details?appid=N&lang=pt|en → gênero, desenvolvedora e ano (loja da Steam, appdetails)
+//   /steam/achievements?appid=N       → conquistas feitas/total do dono (X-Steam-Key + X-Steam-Id, como /steam/owned)
 // Erros: { "error": "<codigo>" } com os códigos da seção 6.4.
 
 /**
@@ -26,6 +28,7 @@ const MAX_ITEMS = 10; // o app filtra DLC/pacotes e fica com até 5
 const SGDB_API = 'https://www.steamgriddb.com/api/v2';
 const SGDB_GAMES = 3; // jogos candidatos por busca (1 requisição de capa cada)
 const SGDB_KEY_RE = /^[A-Za-z0-9_-]{16,64}$/;
+const APPID_RE = /^\d{1,9}$/;
 const KEY_RE = /^[0-9A-Fa-f]{32}$/;
 const ID_RE = /^\d{17}$/;
 const COVER = (/** @type {number} */ appid) => `https://cdn.cloudflare.steamstatic.com/steam/apps/${appid}/library_600x900_2x.jpg`;
@@ -156,6 +159,70 @@ async function search(url, headers) {
 }
 
 /**
+ * /steam/details?appid=N&lang=pt|en: dados da loja da Steam (gêneros, desenvolvedora, ano). `found: false` quando a
+ * loja não tem a página do jogo (removido, região) — o app não insiste.
+ * @param {URL} url
+ * @param {Record<string, string>} headers
+ * @returns {Promise<Response>}
+ */
+async function details(url, headers) {
+  const appid = url.searchParams.get('appid') || '';
+  if (!APPID_RE.test(appid)) return json({ error: 'bad_request' }, 400, headers);
+  const lang = url.searchParams.get('lang') === 'pt' ? 'brazilian' : 'english';
+  const data = await steamGet('https://store.steampowered.com/api/appdetails?' + new URLSearchParams({ appids: appid, l: lang, cc: 'br' }), SEARCH_TTL);
+  const d = data?.[appid]?.success ? data[appid].data : null;
+  if (!d) return json({ appid: Number(appid), found: false }, 200, { ...headers, 'Cache-Control': `public, max-age=${SEARCH_TTL}` });
+  const year = String(d.release_date?.date ?? '').match(/\b(19|20)\d{2}\b/);
+  return json({
+    appid: Number(appid),
+    found: true,
+    genres: (Array.isArray(d.genres) ? d.genres : []).map((/** @type {any} */ g) => String(g?.description ?? '')).filter(Boolean).slice(0, 8),
+    developer: Array.isArray(d.developers) && d.developers[0] ? String(d.developers[0]) : null,
+    year: year ? Number(year[0]) : null,
+  }, 200, { ...headers, 'Cache-Control': `public, max-age=${SEARCH_TTL}` });
+}
+
+/**
+ * /steam/achievements?appid=N: conquistas do dono (feitas/total). Jogo sem conquistas → `total: 0`. Usa as credenciais
+ * do cabeçalho (nunca gravadas, sem cache). Perfil privado → 409 `profile_private`.
+ * @param {URL} url
+ * @param {Request} request
+ * @param {Env} env
+ * @param {Record<string, string>} headers
+ * @returns {Promise<Response>}
+ */
+async function achievements(url, request, env, headers) {
+  const appid = url.searchParams.get('appid') || '';
+  if (!APPID_RE.test(appid)) return json({ error: 'bad_request' }, 400, headers);
+  const custom = request.headers.get('X-Steam-Key') || request.headers.get('X-Steam-Id');
+  let key = env.STEAM_API_KEY;
+  let steamId = env.STEAM_ID;
+  if (custom) {
+    key = (request.headers.get('X-Steam-Key') || '').trim();
+    steamId = (request.headers.get('X-Steam-Id') || '').trim();
+    if (!KEY_RE.test(key) || !ID_RE.test(steamId)) return json({ error: 'bad_request' }, 400, headers);
+  }
+  if (!key || !steamId) return json({ error: 'misconfigured' }, 500, headers);
+  let res;
+  try {
+    res = await fetch('https://api.steampowered.com/ISteamUserStats/GetPlayerAchievements/v1/?' + new URLSearchParams({ key, steamid: steamId, appid, format: 'json' }), { headers: { Accept: 'application/json' } });
+  } catch {
+    throw { code: 'steam_upstream' };
+  }
+  /** @type {any} */
+  let body = null;
+  try { body = await res.json(); } catch { /* tratado abaixo */ }
+  const noCache = { ...headers, 'Cache-Control': 'no-store' };
+  // 400 "Requested app has no stats": o jogo não tem conquistas. 403: perfil/detalhes privados.
+  if (res.status === 403) return json({ error: 'profile_private' }, 409, noCache);
+  if (res.status === 400) return json({ appid: Number(appid), done: 0, total: 0 }, 200, noCache);
+  if (!res.ok) throw { code: 'steam_upstream' };
+  const list = body?.playerstats?.achievements;
+  if (!Array.isArray(list)) return json({ appid: Number(appid), done: 0, total: 0 }, 200, noCache);
+  return json({ appid: Number(appid), done: list.filter((/** @type {any} */ a) => a?.achieved === 1).length, total: list.length }, 200, noCache);
+}
+
+/**
  * GET na API do SteamGridDB com a chave do dono. Devolve `data` (lista) ou lança `{ code: 'steam_upstream' }`.
  * @param {string} path
  * @param {string} key
@@ -227,6 +294,8 @@ export async function handle(request, env) {
   try {
     if (url.pathname === '/steam/owned') return await owned(request, env, headers);
     if (url.pathname === '/steam/search') return await search(url, headers);
+    if (url.pathname === '/steam/details') return await details(url, headers);
+    if (url.pathname === '/steam/achievements') return await achievements(url, request, env, headers);
     if (url.pathname === '/sgdb/search') return await sgdbSearch(url, request, env, headers);
     return json({ error: 'not_found' }, 404, headers);
   } catch (err) {
