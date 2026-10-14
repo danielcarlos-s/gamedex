@@ -102,6 +102,11 @@ export const pt = {
   'sort.asc': 'Ordem crescente',
   'sort.desc': 'Ordem decrescente',
   'library.results': '{n} de {total} jogos',
+  'library.emptystore.title': 'Nenhum jogo em {name}',
+  'library.emptystore.text': 'Esta loja ainda está vazia. Envie uma planilha CSV com os jogos dela ou adicione um jogo manualmente.',
+  'library.emptystore.delete': 'Excluir esta loja',
+  'library.emptystore.confirm': 'Excluir a loja "{name}"? Ela não tem jogos, então nada se perde.',
+  'library.emptystore.delete.yes': 'Sim, excluir',
   'library.noresults.title': 'Nenhum jogo encontrado',
   'library.noresults.text': 'Nenhum jogo combina com esses filtros. Remova algum para ver mais resultados.',
 

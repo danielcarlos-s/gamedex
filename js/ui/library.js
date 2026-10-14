@@ -1,8 +1,8 @@
 import { t, applyI18n } from '../i18n/index.js';
 import { icon } from '../icons.js';
 import { db } from '../data-source.js';
-import { renderGrid, bindCoverFallback, esc } from './grid.js';
-import { allStoreIds } from '../data/stores.js';
+import { renderGrid, bindCoverFallback, esc, storeLabel } from './grid.js';
+import { allStoreIds, customStore, deleteStore } from '../data/stores.js';
 import { initDisclosure } from '../menu.js';
 import { parseState, stateToHash, runFilters, sortGames, buildPanel } from './filters.js';
 
@@ -32,6 +32,26 @@ const noResultsHtml = () => `<div class="state panel" role="status">
   <p class="t-body measure">${esc(t('library.noresults.text'))}</p>
   <button class="btn btn--primary cut-a-8 is-chamfered" type="button" data-role="clear-all">${esc(t('filters.clear'))}</button></div>`;
 
+/** Aba de uma loja sem nenhum jogo (e sem outros filtros): caminhos para encher a loja ou, se for criada pelo usuário, excluí-la. */
+const emptyStoreHtml = (id, confirming) => {
+  const q = encodeURIComponent(id);
+  const name = storeLabel(id);
+  const del = !customStore(id) ? '' : confirming
+    ? `<div class="panel confirm" role="group" aria-labelledby="es-del"><p class="t-body" id="es-del">${esc(t('library.emptystore.confirm', { name }))}</p>
+        <div class="row"><button class="btn btn--primary cut-a-8 is-chamfered" type="button" data-role="store-delete-yes">${icon('trash')}<span>${esc(t('library.emptystore.delete.yes'))}</span></button>
+        <button class="btn btn--ghost cut-a-8 is-chamfered" type="button" data-role="store-delete-no">${esc(t('common.cancel'))}</button></div></div>`
+    : `<button class="btn btn--ghost cut-a-8 is-chamfered" type="button" data-role="store-delete">${icon('trash')}<span>${esc(t('library.emptystore.delete'))}</span></button>`;
+  return `<div class="state panel" role="status">
+  <h2 class="state__title">${esc(t('library.emptystore.title', { name }))}</h2>
+  <p class="t-body measure">${esc(t('library.emptystore.text'))}</p>
+  <div class="row">
+    <a class="btn btn--primary cut-a-8 is-chamfered" href="#/import?csv=1&store=${q}">${icon('upload')}<span>${esc(t('library.add.csv'))}</span></a>
+    <a class="btn cut-a-8 is-chamfered" href="#/game/new?store=${q}">${icon('plus')}<span>${esc(t('library.add.manual'))}</span></a>
+    ${confirming ? '' : del}
+  </div>
+  ${confirming ? del : ''}</div>`;
+};
+
 const errorHtml = (code) => `<div class="state panel" role="alert">
   <span class="row">${icon('alert')}<span class="state__title">${esc(t('state.error.title'))}</span></span>
   <p class="t-body">${esc(t('err.' + code))}</p>
@@ -58,6 +78,7 @@ export function mountLibrary(root, query) {
   let seq = 0;
   let games = [];
   let panel = null;
+  let confirmingDelete = false;
 
   function paint() {
     // aba de uma loja que deixou de existir (excluída) volta para "Todos"
@@ -69,6 +90,22 @@ export function mountLibrary(root, query) {
     addCsv.href = state.store ? `#/import?csv=1&store=${encodeURIComponent(state.store)}` : '#/import?csv=1';
     panel?.update(state, counts, result.length, games.length);
     if (!games.length) { body.innerHTML = emptyHtml(); return; }
+    const onlyStore = state.store && !state.q && !state.status.size && !state.tags.size && !state.genres.size && !state.fav && !state.multi && !state.played;
+    if (!result.length && onlyStore) {
+      body.innerHTML = emptyStoreHtml(state.store, confirmingDelete);
+      const q = (r) => body.querySelector(`[data-role="${r}"]`);
+      q('store-delete')?.addEventListener('click', () => { confirmingDelete = true; paint(); body.querySelector('[data-role="store-delete-no"]')?.focus(); });
+      q('store-delete-no')?.addEventListener('click', () => { confirmingDelete = false; paint(); body.querySelector('[data-role="store-delete"]')?.focus(); });
+      q('store-delete-yes')?.addEventListener('click', async () => {
+        const id = state.store;
+        confirmingDelete = false;
+        try { await deleteStore(id, games); } catch { paint(); return; }
+        state.store = null;
+        onChange();
+      });
+      return;
+    }
+    confirmingDelete = false;
     if (!result.length) {
       body.innerHTML = noResultsHtml();
       body.querySelector('[data-role="clear-all"]').addEventListener('click', () => filtersRoot.querySelector('[data-role="clear"]').click());

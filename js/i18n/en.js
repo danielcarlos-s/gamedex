@@ -102,6 +102,11 @@ export const en = {
   'sort.asc': 'Ascending order',
   'sort.desc': 'Descending order',
   'library.results': '{n} of {total} games',
+  'library.emptystore.title': 'No games in {name}',
+  'library.emptystore.text': 'This store is still empty. Upload a CSV spreadsheet with its games or add a game manually.',
+  'library.emptystore.delete': 'Delete this store',
+  'library.emptystore.confirm': 'Delete the store "{name}"? It has no games, so nothing is lost.',
+  'library.emptystore.delete.yes': 'Yes, delete',
   'library.noresults.title': 'No games found',
   'library.noresults.text': 'No game matches these filters. Remove one to see more results.',
 
