@@ -4,7 +4,7 @@
 //
 // Formato: { "app": "gamedex", "schemaVersion": 1, "exportedAt": "ISO", "games": [...], "meta": { lastSteamSync } }
 // (sem handles, sem workerUrl, sem lastBackupAt). Campos opcionais em `meta` (aditivos, a versão do schema não muda):
-// `customStores` (lojas criadas pelo usuário), `theme` ('light'|'dark'), `steamId` (público) e `steamKeyEnc` (chave da Steam API cifrada com senha; só quando o usuário pede).
+// `workerUrl` (endereço do Worker; não é segredo), `customStores` (lojas criadas pelo usuário), `theme` ('light'|'dark'), `steamId` (público) e `steamKeyEnc` (chave da Steam API cifrada com senha; só quando o usuário pede).
 
 import { getAllGames, getMeta, setMeta, putGames, replaceGames, onChange } from './db.js';
 import { encryptSecret, decryptSecret } from './keycrypt.js';
@@ -40,6 +40,9 @@ export const _internals = {
   handleStore: { get: () => getMeta(HANDLE_KEY), set: (h) => setMeta(HANDLE_KEY, h) },
 };
 
+/** @param {unknown} u @returns {u is string} */
+const isHttpUrl = (u) => { try { return typeof u === 'string' && /^https?:$/.test(new URL(u).protocol); } catch { return false; } };
+
 /** @returns {{code: string}} */
 const permissionDenied = () => ({ code: 'fs_permission_denied' });
 
@@ -55,10 +58,11 @@ const nowIso = () => new Date().toISOString();
  * @returns {Promise<{app: string, schemaVersion: number, exportedAt: string, games: Game[], meta: Record<string, any>}>}
  */
 async function buildBackup(options = {}) {
-  const [games, lastSteamSync, steamId, steamKey, theme, customStores] = await Promise.all([getAllGames(), getMeta('lastSteamSync'), getMeta('steamId'), getMeta('steamKey'), getMeta('theme'), getMeta('customStores')]);
+  const [games, lastSteamSync, steamId, steamKey, theme, customStores, workerUrl] = await Promise.all([getAllGames(), getMeta('lastSteamSync'), getMeta('steamId'), getMeta('steamKey'), getMeta('theme'), getMeta('customStores'), getMeta('workerUrl')]);
   /** @type {Record<string, any>} */ const meta = { lastSteamSync };
   if (steamId) meta.steamId = steamId;
   if (theme === 'light' || theme === 'dark') meta.theme = theme;
+  if (isHttpUrl(workerUrl)) meta.workerUrl = workerUrl;
   const stores = sanitizeStores(customStores);
   if (stores.length) meta.customStores = stores;
   if (options.includeKey && steamKey) meta.steamKeyEnc = await encryptSecret(steamKey, options.password || '');
@@ -105,7 +109,7 @@ export async function downloadBackup(options = {}) {
  * Lê e valida um arquivo de backup. Nada é gravado aqui.
  * Lança `backup_invalid` (JSON ilegível, não é do gamedex, jogo inválido) ou `backup_version` (versão mais nova).
  * @param {Blob|string} file
- * @returns {Promise<{games: Game[], lastSteamSync: string|null, steamId: string|null, steamKeyEnc: any, theme: 'light'|'dark'|null, customStores: any}>}
+ * @returns {Promise<{games: Game[], lastSteamSync: string|null, steamId: string|null, steamKeyEnc: any, theme: 'light'|'dark'|null, customStores: any, workerUrl: string|null}>}
  */
 async function readBackup(file) {
   let data;
@@ -133,6 +137,7 @@ async function readBackup(file) {
     steamKeyEnc: keyEnc && typeof keyEnc === 'object' ? keyEnc : null,
     theme: data.meta?.theme === 'light' || data.meta?.theme === 'dark' ? data.meta.theme : null,
     customStores: data.meta?.customStores,
+    workerUrl: isHttpUrl(data.meta?.workerUrl) ? data.meta.workerUrl : null,
   };
 }
 
@@ -268,6 +273,7 @@ export function planBackupMerge(existing, fileGames, now = nowIso()) {
  * Valida o arquivo inteiro antes de gravar qualquer coisa. Lança `{ code }`: `backup_invalid`, `backup_version`,
  * `bad_request` (modo desconhecido), `idb_unavailable`, `backup_password` (senha errada; nada é gravado).
  * Tema do arquivo (`result.theme`, a UI aplica): restaurado em `replace`; em `merge` só se não houver um local.
+ * Endereço do Worker do arquivo: restaurado em `replace`; em `merge` só se não houver um local.
  * SteamID do arquivo: restaurado sempre (em `merge`, só se não houver um local). Chave Steam: só com `options.password`
  * correta (em `merge`, só se não houver uma local); sem senha o resto é importado e `steam.key` = `'skipped'`.
  * @param {Blob|string} file
@@ -277,7 +283,7 @@ export function planBackupMerge(existing, fileGames, now = nowIso()) {
  */
 export async function importBackup(file, mode, options = {}) {
   if (mode !== 'replace' && mode !== 'merge') throw { code: 'bad_request' };
-  const { games, lastSteamSync, steamId, steamKeyEnc, theme, customStores } = await readBackup(file);
+  const { games, lastSteamSync, steamId, steamKeyEnc, theme, customStores, workerUrl } = await readBackup(file);
   const plainKey = steamKeyEnc && options.password ? await decryptSecret(steamKeyEnc, options.password) : null;
   const steam = async () => {
     /** @type {{id: boolean, key: 'none'|'restored'|'skipped'}} */ const r = { id: false, key: steamKeyEnc ? 'skipped' : 'none' };
@@ -292,6 +298,8 @@ export async function importBackup(file, mode, options = {}) {
     return theme;
   };
 
+  // endereço do Worker: restaurado em `replace`; em `merge` só se não houver um local
+  if (workerUrl && (mode === 'replace' || !(await getMeta('workerUrl')))) await setMeta('workerUrl', workerUrl);
   // lojas criadas primeiro: os jogos importados podem usar o id delas
   await loadStores();
   await restoreStores(customStores, mode);

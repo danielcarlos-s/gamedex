@@ -294,7 +294,7 @@ export async function mountGameForm(root, id, opts = {}) {
     render();
     try {
       const url = await workerUrl();
-      if (!url) throw { code: 'misconfigured' };
+      if (!url) throw { code: 'worker_not_configured' };
       cover.items = await searchCover(term, url);
     } catch (e) {
       cover.error = e?.code || 'network';

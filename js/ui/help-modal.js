@@ -11,14 +11,11 @@ const TOPICS = {
   worker: {
     steps: [
       { k: 's1', link: { url: 'https://dash.cloudflare.com/sign-up', k: 'l1' } },
-      { k: 's2', link: { url: 'https://nodejs.org', k: 'l2' } },
-      { k: 's3', cmd: 'git clone https://github.com/danielcarlos-s/gamedex.git\ncd gamedex/worker' },
-      { k: 's4', cmd: 'ALLOWED_ORIGINS = "https://seu-usuario.github.io,http://localhost:8080"' },
-      { k: 's5', cmd: 'npx wrangler login' },
-      { k: 's6', cmd: 'npx wrangler deploy' },
-      { k: 's7', cmd: 'https://gamedex-steam-proxy.seu-usuario.workers.dev' },
+      { k: 's2', link: { url: 'https://deploy.workers.cloudflare.com/?url=https://github.com/danielcarlos-s/gamedex/tree/main/worker', k: 'l2' } },
+      { k: 's3', cmd: 'https://gamedex-steam-proxy.seu-usuario.workers.dev' },
+      { k: 's4' },
     ],
-    notes: ['n1', 'n2'],
+    notes: ['n1', 'n2', 'n3'],
   },
   steamid: {
     steps: [

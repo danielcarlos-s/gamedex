@@ -3,7 +3,7 @@ main = "steam-proxy.js"
 compatibility_date = "2025-01-01"
 
 # Origens que podem chamar o Worker (separadas por vírgula, sem barra final).
-# TROQUE <usuario> pelo seu usuário do GitHub. localhost/127.0.0.1 são para testar na sua máquina.
+# Já vem com o site do autor; troque se hospedar o gamedex em outro endereço. localhost/127.0.0.1 são para testar na sua máquina.
 [vars]
 ALLOWED_ORIGINS = "https://danielcarlos-s.github.io,http://localhost:8080,http://127.0.0.1:8080"
 

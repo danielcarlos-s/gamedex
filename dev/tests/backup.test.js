@@ -84,7 +84,7 @@ function nextAutoSave(timeoutMs = 15000) {
 
 test('backup: o debounce do auto-save é de 2 s', () => { assert.equal(DEFAULT_DEBOUNCE, 2000); });
 
-test('backup: formato do arquivo (app, schemaVersion, exportedAt, games, meta.lastSteamSync) sem handles nem workerUrl', async () => {
+test('backup: formato do arquivo (app, schemaVersion, exportedAt, games, meta.lastSteamSync) workerUrl http(s) incluído, sem handles', async () => {
   await db.clearGames();
   await db.putGames(sample());
   await db.setMeta('lastSteamSync', '2026-10-01T00:00:00.000Z');
@@ -98,7 +98,10 @@ test('backup: formato do arquivo (app, schemaVersion, exportedAt, games, meta.la
   assert.equal(data.schemaVersion, 1);
   assert.ok(!Number.isNaN(Date.parse(data.exportedAt)));
   assert.equal(data.games.length, 43);
-  assert.deepEqual(data.meta, { lastSteamSync: '2026-10-01T00:00:00.000Z' });
+  assert.deepEqual(data.meta, { lastSteamSync: '2026-10-01T00:00:00.000Z', workerUrl: 'https://w.test' });
+  await db.setMeta('workerUrl', 'javascript:alert(1)');
+  assert.equal(JSON.parse(await (await backup.exportBackup()).text()).meta.workerUrl, undefined, 'só http(s) vai no arquivo');
+  await db.setMeta('workerUrl', null);
   await db.clearGames();
 });
 
@@ -506,4 +509,21 @@ test('backup/lojas: lojas criadas vão no arquivo e voltam; mesclar só acrescen
   await backup.importBackup(JSON.stringify(extra), 'merge');
   assert.deepEqual(stores.getCustomStores().map((s) => s.name), ['Blizzard', 'itch.io']);
   await db.clearGames(); await db.setMeta('customStores', null); await stores.loadStores();
+});
+
+test('backup/worker: endereço do Worker vai no arquivo; replace restaura, merge não sobrescreve o local', async () => {
+  await db.clearGames(); await db.setMeta('workerUrl', 'https://meu.workers.dev');
+  const text = await (await backup.exportBackup()).text();
+  assert.equal(JSON.parse(text).meta.workerUrl, 'https://meu.workers.dev');
+  await db.setMeta('workerUrl', null);
+  await backup.importBackup(text, 'replace');
+  assert.equal(await db.getMeta('workerUrl'), 'https://meu.workers.dev');
+  await db.setMeta('workerUrl', 'https://local.workers.dev');
+  await backup.importBackup(text, 'merge');
+  assert.equal(await db.getMeta('workerUrl'), 'https://local.workers.dev');
+  const bad = JSON.parse(text); bad.meta.workerUrl = 'ftp://x';
+  await db.setMeta('workerUrl', null);
+  await backup.importBackup(JSON.stringify(bad), 'replace');
+  assert.equal(await db.getMeta('workerUrl'), null, 'só http(s) é aceito');
+  await db.setMeta('workerUrl', null); await db.clearGames();
 });

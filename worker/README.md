@@ -11,6 +11,16 @@ O Worker responde a duas rotas, e só para o seu site (e para o `localhost`, par
 | `GET /steam/owned` | lista os jogos da sua conta Steam (nome, tempo jogado, último jogo, capa) |
 | `GET /steam/search?term=nome` | acha a capa de qualquer jogo pelo nome |
 
+## Jeito mais fácil: botão "Deploy to Cloudflare" (sem terminal)
+
+1. Tenha uma conta gratuita na Cloudflare (<https://dash.cloudflare.com/sign-up>).
+2. Abra o botão: <https://deploy.workers.cloudflare.com/?url=https://github.com/danielcarlos-s/gamedex/tree/main/worker>
+3. Autorize o GitHub e avance nas telas: a Cloudflare copia o Worker para a sua conta e publica.
+4. Copie o endereço `...workers.dev` e cole em **Ajustes → Worker da Steam** no gamedex.
+
+O `wrangler.toml` já vem aceitando o site `https://danielcarlos-s.github.io`. Se você hospeda o gamedex em outro endereço, troque
+`ALLOWED_ORIGINS` (veja abaixo) antes de publicar. Cada pessoa usa o **seu** Worker: o app não traz nenhum Worker embutido.
+
 ## Antes de começar
 
 1. **Node.js** instalado (versão 18 ou mais nova): <https://nodejs.org>. Teste com `node --version`.
