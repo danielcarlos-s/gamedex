@@ -253,7 +253,7 @@ export const en = {
   'import.saved.progress': '{done} of {total} covers',
   'import.saved.result': 'Covers: {saved} saved, {failed} could not be downloaded (they still load from their original address).',
   'import.saved.result.cancelled': 'Cancelled. Covers: {saved} saved, {failed} not downloaded.',
-  'import.review.stores': 'Stores where you own this game',
+  'import.review.stores': 'Game store:',
   'import.review.title': 'Review covers',
   'import.review.text': 'The search is done. These games had no result with the same name and need your pick. Game {i} of {n}.',
   'import.review.more': 'Find other covers',
