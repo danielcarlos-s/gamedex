@@ -124,6 +124,7 @@ export function mountImport(root, query) {
       <h2 class="t-section">${esc(t('import.review.title'))}</h2>
       <p class="t-body measure">${esc(t('import.review.text', { i: formatNumber(r.i + 1), n: formatNumber(r.list.length) }))}</p>
       <h3 class="state__title">${esc(game.title)}</h3>
+      <div class="row" aria-label="${esc(t('import.review.stores'))}">${[...new Set((game.ownerships || []).map((o) => o.store))].map(storeChip).join('')}</div>
       ${r.items.length ? `<div class="cover-results">${r.items.map(pickHtml).join('')}</div>` : `<p class="t-body" role="status">${esc(t('game.cover.none'))}</p>`}
       ${r.noMore ? `<p class="t-body" role="status">${esc(t('import.review.nomore'))}</p>` : ''}
       ${r.error ? `<p class="field__error" role="alert">${icon('alert')} ${esc(t('err.' + r.error))}</p>` : ''}

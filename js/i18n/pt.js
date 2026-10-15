@@ -253,6 +253,7 @@ export const pt = {
   'import.saved.progress': '{done} de {total} capas',
   'import.saved.result': 'Capas: {saved} salvas, {failed} não puderam ser baixadas (continuam abrindo pelo endereço de origem).',
   'import.saved.result.cancelled': 'Cancelado. Capas: {saved} salvas, {failed} sem baixar.',
+  'import.review.stores': 'Lojas em que você tem este jogo',
   'import.review.title': 'Revisar capas',
   'import.review.text': 'A busca terminou. Estes jogos não tiveram um resultado com o nome igual e precisam da sua escolha. Jogo {i} de {n}.',
   'import.review.more': 'Buscar outras capas',

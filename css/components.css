@@ -284,7 +284,14 @@ dialog.help::backdrop { background-color: var(--overlay); }
 .store-row:first-of-type { border-top: 0; }
 
 /* ---- Abas de loja ---- */
-.store-strip { display: flex; align-items: center; gap: var(--sp-5); overflow-x: auto; scroll-snap-type: x proximity; padding-block: var(--sp-2); scrollbar-width: thin; }
+/* Celular: arrasta de lado, sem barra de rolagem aparente (a borda direita esmaece para sugerir que continua). */
+.store-strip { display: flex; align-items: center; gap: var(--sp-5); overflow-x: auto; scroll-snap-type: x proximity; padding-block: var(--sp-2); scrollbar-width: none; -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); }
+.store-strip::-webkit-scrollbar { display: none; }
+/* Telas maiores: as abas quebram em mais de uma linha, então nada fica escondido e não há barra de rolagem. */
+@media (min-width: 640px) {
+  .store-strip { overflow: visible; align-items: flex-start; -webkit-mask-image: none; mask-image: none; }
+  .store-strip .tabs { flex: 1 1 0; flex-wrap: wrap; min-width: 0; }
+}
 .tabs { display: flex; gap: var(--sp-3); flex: none; }
 .tab {
   display: inline-flex; align-items: center; gap: var(--sp-4); flex: none; scroll-snap-align: start;
