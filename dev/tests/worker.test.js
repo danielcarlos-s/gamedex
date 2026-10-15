@@ -127,7 +127,8 @@ test('worker: /steam/search termo vazio ou >100 → 400 bad_request; upstream ru
     }
     assert.equal((await handle(req('/steam/search?term=' + 'a'.repeat(100)), env)).status, 502);
   });
-  assert.equal(calls.length, 1, 'inválidos não chamam a Steam');
+  assert.equal(calls.length, 2, 'inválidos não chamam a Steam; o termo válido tenta de novo com iniciais maiúsculas');
+  assert.ok(calls[1].includes('term=A'.padEnd(6 + 99, 'a')), 'segunda tentativa com a inicial maiúscula');
 });
 test('worker: rota desconhecida e método não-GET → 404 not_found (com CORS)', async () => {
   for (const r of [await handle(req('/outra'), env), await handle(req('/steam/owned', OK, 'POST'), env)]) {
@@ -245,4 +246,12 @@ test('worker: /steam/achievements conta feitas/total com as credenciais do cabe�
     assert.equal(r.status, 409);
     assert.deepEqual(await r.json(), { error: 'profile_private' });
   });
+});
+test('worker: /steam/search tenta de novo com iniciais maiúsculas quando a Steam recusa o termo (ex.: "observer" → "Observer")', async () => {
+  const calls = await withFetch((u) => u.includes('term=Observer') ? jsonRes({ items: [{ id: 1386900, name: 'Observer: System Redux' }] }) : jsonRes({}, 403), async () => {
+    const r = await handle(req('/steam/search?term=observer'), env);
+    assert.equal(r.status, 200);
+    assert.equal((await r.json()).items[0].appid, 1386900);
+  });
+  assert.equal(calls.length, 2);
 });

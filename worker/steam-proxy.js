@@ -149,8 +149,16 @@ async function owned(request, env, headers) {
 async function search(url, headers) {
   const term = (url.searchParams.get('term') || '').trim();
   if (!term || term.length > MAX_TERM) return json({ error: 'bad_request' }, 400, headers);
-  const upstream = 'https://store.steampowered.com/api/storesearch/?' + new URLSearchParams({ term, l: 'english', cc: 'US' });
-  const data = await steamGet(upstream, SEARCH_TTL);
+  const upstream = (/** @type {string} */ q) => 'https://store.steampowered.com/api/storesearch/?' + new URLSearchParams({ term: q, l: 'english', cc: 'US' });
+  /** @type {any} */ let data;
+  try {
+    data = await steamGet(upstream(term), SEARCH_TTL);
+  } catch (err) {
+    // A Steam recusa (403) alguns termos só quando vêm do Cloudflare (ex.: "observer" em minúsculas, mas "Observer" passa).
+    const alt = term.replace(/(^|\s)(\p{L})/gu, (_, sp, c) => sp + c.toUpperCase());
+    if (alt === term) throw err;
+    data = await steamGet(upstream(alt), SEARCH_TTL);
+  }
   const items = (Array.isArray(data?.items) ? data.items : [])
     .filter((/** @type {any} */ i) => Number.isInteger(i?.id))
     .slice(0, MAX_ITEMS)

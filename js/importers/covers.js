@@ -196,6 +196,13 @@ export async function searchCoverAll(title, workerUrl, signal, sgdbKey) {
     if (/** @type {any} */ (err)?.name === 'AbortError') throw err;
     steamErr = err;
   }
+  // sem resultado (ou a Steam recusou o termo): tenta o título-base, sem símbolos como ">" e "_" nem a edição
+  const plain = normalizeTitle(String(title ?? ''));
+  if ((steamErr || !steam.length) && plain && plain !== String(title ?? '').trim().toLowerCase()) {
+    try { steam = await searchCover(plain, workerUrl, signal); steamErr = null; } catch (err) {
+      if (/** @type {any} */ (err)?.name === 'AbortError') throw err;
+    }
+  }
   const exact = steam.length > 0 && normalizeTitle(steam[0].name) === normalizeTitle(title);
   const other = exact ? [] : (await searchSgdb(title, workerUrl, signal, sgdbKey)) ?? [];
   if (steamErr && !other.length) throw steamErr;

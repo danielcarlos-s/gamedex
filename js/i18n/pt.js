@@ -190,7 +190,7 @@ export const pt = {
   'game.cover.pending': 'Capa escolhida. Ela será gravada quando você salvar o jogo.',
   'game.cover.term': 'Nome para buscar',
   'game.cover.go': 'Buscar',
-  'game.cover.hint': 'Não achou? Digite o nome exatamente como aparece na loja da Steam e busque de novo. O nome do jogo aqui não muda.',
+  'game.cover.hint': 'Não achou? Digite o nome como aparece na loja e busque de novo. A busca usa a Steam e, se você colou a chave em Ajustes, também o SteamGridDB. O nome do jogo aqui não muda.',
   'game.cover.url': 'URL da capa',
   'game.cover.apply': 'Usar URL',
   'game.cover.remove': 'Remover capa',

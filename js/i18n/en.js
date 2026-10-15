@@ -190,7 +190,7 @@ export const en = {
   'game.cover.pending': 'Cover chosen. It will be stored when you save the game.',
   'game.cover.term': 'Name to search',
   'game.cover.go': 'Search',
-  'game.cover.hint': 'Not found? Type the name exactly as it appears in the Steam store and search again. The game name here does not change.',
+  'game.cover.hint': 'Not found? Type the name as it appears in the store and search again. The search uses Steam and, if you pasted your key in Settings, SteamGridDB too. The game name here does not change.',
   'game.cover.url': 'Cover URL',
   'game.cover.apply': 'Use URL',
   'game.cover.remove': 'Remove cover',
