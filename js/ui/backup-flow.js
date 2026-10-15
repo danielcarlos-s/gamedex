@@ -19,6 +19,7 @@ export function mountBackupImport(host, file, hooks = {}) {
   let armed = false;
   let busy = false;
   let error = null;
+  let errorDetail = null;
   let result = null;
   let hasKey = false;
   let password = '';
@@ -37,7 +38,7 @@ export function mountBackupImport(host, file, hooks = {}) {
     host.innerHTML = `<div class="panel panel--live stack">
       <h2 class="t-section">${esc(t('backup.title'))}</h2>
       <p class="t-data">${esc(file.name)}</p>
-      ${error ? `<p class="field__error" role="alert">${icon('alert')} ${esc(t('err.' + error))}</p>` : ''}
+      ${error ? `<p class="field__error" role="alert">${icon('alert')} ${esc(t('err.' + error))}${errorDetail ? ` (${esc(errorDetail)})` : ''}</p>` : ''}
       ${hasKey ? `<div class="field"><label class="field__label" for="bk-pw">${esc(t('backup.password'))}</label>
         <input id="bk-pw" class="input cut-a-6 is-chamfered" type="password" autocomplete="off" value="${esc(password)}">
         <p class="t-hint">${esc(t('backup.password.text'))}</p></div>` : ''}
@@ -59,13 +60,14 @@ export function mountBackupImport(host, file, hooks = {}) {
   }
 
   async function run() {
-    busy = true; error = null; render();
+    busy = true; error = null; errorDetail = null; render();
     try {
       result = await importBackup(file, mode, { password });
       if (result.theme) applyTheme(result.theme, { mirror: false });
       hooks.onDone?.(result);
     } catch (e) {
       error = e?.code || 'backup_invalid';
+      errorDetail = e?.detail || null;
       armed = false;
     }
     busy = false;

@@ -3,7 +3,8 @@ import { icon } from '../icons.js';
 import { db } from '../data-source.js';
 import { createGame, createOwnership, normalizeTitle, recalcTotals, validateGame, splitOwnership, isStoreId } from '../data/model.js';
 import { allStoreIds } from '../data/stores.js';
-import { searchCoverAll } from '../importers/covers.js';
+import { localCover, preloadCovers } from '../data/cover-cache.js';
+import { searchCoverAll, searchCoverMore } from '../importers/covers.js';
 import { steamAppId, fetchStoreDetails, fetchAchievements, fillEmpty } from '../importers/details.js';
 import { WORKER_URL } from '../config.js';
 import { esc, bindCoverFallback, storeLabel } from './grid.js';
@@ -36,9 +37,10 @@ export async function mountGameForm(root, id, opts = {}) {
   let message = '';
   let details = { loading: false };
   let confirmDelete = false;
-  let cover = { open: false, loading: false, items: null, error: null, term: '' };
+  let cover = { open: false, loading: false, items: null, error: null, term: '', noMore: false };
 
   root.innerHTML = `<div class="state panel panel--live" role="status"><div class="loader"></div><span class="t-label">${esc(t('state.loading'))}</span></div>`;
+  await preloadCovers();
   try {
     if (isNew) draft = createGame({ ownerships: [{ store: isStoreId(opts.store) ? opts.store : 'other', source: 'manual' }] });
     else draft = await db.getGame(id);
@@ -118,7 +120,7 @@ export async function mountGameForm(root, id, opts = {}) {
 
   function coverHtml() {
     const img = draft.coverUrl
-      ? `<img src="${esc(draft.coverUrl)}" alt="" data-title="${esc(draft.title)}" ${draft.coverAppId ? `data-appid="${esc(draft.coverAppId)}"` : ''}>`
+      ? `<img src="${esc(localCover(draft.coverUrl))}" alt="" data-title="${esc(draft.title)}" ${draft.coverAppId ? `data-appid="${esc(draft.coverAppId)}"` : ''}>`
       : `<div class="cover-ph">${esc(draft.title || t('game.new'))}</div>`;
     let panel = '';
     if (cover.open) {
@@ -132,6 +134,10 @@ export async function mountGameForm(root, id, opts = {}) {
       else if (!cover.items.length) panel += `<p class="t-body" role="status">${esc(t('game.cover.none'))}</p>`;
       else panel += cover.items.map((it, i) => `<button type="button" class="cover-pick cut-a-6 is-chamfered" data-action="cover-pick" data-i="${i}" aria-label="${esc(t('game.cover.pick', { name: it.name }))}">
           <img src="${esc(it.coverUrl)}" alt="" ${it.appid ? `data-appid="${esc(it.appid)}"` : ''} loading="lazy"><span>${esc(it.name)}</span></button>`).join('');
+      if (!cover.loading && cover.items) {
+        if (cover.noMore) panel += `<p class="t-body" role="status">${esc(t('import.review.nomore'))}</p>`;
+        panel += `<div class="row"><button type="button" class="btn cut-a-8 is-chamfered" data-action="cover-more" ${cover.more ? 'disabled' : ''}>${esc(t(cover.more ? 'import.review.loading' : 'import.review.more'))}</button></div>`;
+      }
       panel += '</div>';
     }
     return `<div class="detail__cover cut-b-24">${img}</div>
@@ -293,7 +299,7 @@ export async function mountGameForm(root, id, opts = {}) {
     sync();
     const typed = retry === true ? ($('#g-coverterm')?.value ?? '').trim() : '';
     const term = typed || (retry === true ? cover.term : '') || draft.title;
-    cover = { open: true, loading: true, items: null, error: null, term };
+    cover = { open: true, loading: true, items: null, error: null, term, noMore: false };
     render();
     try {
       const url = await workerUrl();
@@ -355,6 +361,22 @@ export async function mountGameForm(root, id, opts = {}) {
     },
     'cover-search': () => searchCovers(false),
     'cover-research': () => searchCovers(true),
+    'cover-more': async () => {
+      sync();
+      cover.more = true; cover.noMore = false;
+      render('[data-action="cover-more"]');
+      try {
+        const url = await workerUrl();
+        if (!url) throw { code: 'worker_not_configured' };
+        const typed = ($('#g-coverterm')?.value ?? '').trim();
+        const more = await searchCoverMore(typed || cover.term || draft.title, url, { exclude: cover.items, sgdbKey: (await db.getMeta('sgdbKey').catch(() => null)) || undefined });
+        if (more.length) cover.items = [...cover.items, ...more]; else cover.noMore = true;
+      } catch (e) {
+        cover.error = e?.code || 'network';
+      }
+      cover.more = false;
+      if (!disposed) render('[data-action="cover-more"]');
+    },
     'cover-pick': async (b) => {
       sync();
       const it = cover.items[Number(b.dataset.i)];

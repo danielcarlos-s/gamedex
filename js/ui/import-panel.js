@@ -4,8 +4,9 @@ import { db } from '../data-source.js';
 import { planMerge, applyMerge } from '../data/model.js';
 import { fetchOwned, parseSteamCache } from '../importers/steam.js';
 import { parseCsv, templateCsv } from '../importers/csv.js';
-import { queueCovers } from '../importers/covers.js';
+import { queueCovers, searchCoverMore } from '../importers/covers.js';
 import { queueDetails, gamesToComplete } from '../importers/details.js';
+import { preloadCovers, queueSaveCovers, clearSavedCovers, pendingCovers } from '../data/cover-cache.js';
 import { WORKER_URL } from '../config.js';
 import { esc, storeLabel, storeChip, bindCoverFallback } from './grid.js';
 import { allStoreIds, customStoreFromText } from '../data/stores.js';
@@ -27,10 +28,12 @@ export function mountImport(root, query) {
   let steamReady = false; // Worker + SteamID + chave preenchidos
   let lastSync = null;
   let defaultStore = allStoreIds().includes(query?.get('store')) ? query.get('store') : ''; // loja usada nas linhas do CSV sem loja (ou em todas, se o CSV não tiver a coluna)
-  let covers = { missing: 0, running: false, done: 0, total: 0, result: null, error: null, choice: null };
+  let covers = { missing: 0, running: false, done: 0, total: 0, result: null, error: null, choice: null, review: null };
   let abort = null;
   let info = { missing: 0, running: false, done: 0, total: 0, result: null, error: null };
   let abortInfo = null;
+  let cc = { withCover: 0, saved: 0, running: false, done: 0, total: 0, result: null, error: null };
+  let abortCc = null;
   let disposed = false;
   bindCoverFallback(root); // opção de capa sem imagem some da lista de escolha
 
@@ -63,6 +66,7 @@ export function mountImport(root, query) {
       </section>
       ${coversHtml()}
       ${detailsHtml()}
+      ${savedCoversHtml()}
       <section class="panel stack">
         <h2 class="t-section">${esc(t('import.file.title'))}</h2>
         <p class="t-body measure">${esc(t('import.file.text'))}</p>
@@ -111,8 +115,30 @@ export function mountImport(root, query) {
       </div></section>`;
   }
 
+  const pickHtml = (it, i) => `<button type="button" class="cover-pick cut-a-6 is-chamfered" data-act="review-pick" data-i="${i}" aria-label="${esc(t('game.cover.pick', { name: it.name }))}"><img src="${esc(it.coverUrl)}" alt="" ${it.appid ? `data-appid="${esc(it.appid)}"` : ''} loading="lazy"><span>${esc(it.name)}</span></button>`;
+
+  function reviewHtml() {
+    const r = covers.review;
+    const game = r.list[r.i].game;
+    return `<section class="panel stack" aria-live="polite">
+      <h2 class="t-section">${esc(t('import.review.title'))}</h2>
+      <p class="t-body measure">${esc(t('import.review.text', { i: formatNumber(r.i + 1), n: formatNumber(r.list.length) }))}</p>
+      <h3 class="state__title">${esc(game.title)}</h3>
+      ${r.items.length ? `<div class="cover-results">${r.items.map(pickHtml).join('')}</div>` : `<p class="t-body" role="status">${esc(t('game.cover.none'))}</p>`}
+      ${r.noMore ? `<p class="t-body" role="status">${esc(t('import.review.nomore'))}</p>` : ''}
+      ${r.error ? `<p class="field__error" role="alert">${icon('alert')} ${esc(t('err.' + r.error))}</p>` : ''}
+      <div class="field"><label class="field__label" for="rv-term">${esc(t('import.review.term'))}</label>
+        <div class="row"><input id="rv-term" class="input cut-a-6 is-chamfered" type="search" autocomplete="off" maxlength="100" value="${esc(r.term ?? game.title)}">
+          <button type="button" class="btn cut-a-8 is-chamfered" data-act="review-more" ${r.loading ? 'disabled' : ''}>${esc(t(r.loading ? 'import.review.loading' : 'import.review.more'))}</button></div></div>
+      <div class="row">
+        <button type="button" class="btn btn--ghost cut-a-8 is-chamfered" data-act="review-skip">${esc(t('import.covers.skip'))}</button>
+        <button type="button" class="btn btn--ghost cut-a-8 is-chamfered" data-act="review-skip-all">${esc(t('import.review.skipall'))}</button>
+      </div></section>`;
+  }
+
   function coversHtml() {
     const c = covers;
+    if (c.review) return reviewHtml();
     if (c.running) {
       const pct = c.total ? Math.round((c.done / c.total) * 100) : 0;
       return `<section class="panel stack" aria-live="polite">
@@ -169,6 +195,30 @@ export function mountImport(root, query) {
       <div class="row"><button type="button" class="btn cut-a-8 is-chamfered" data-act="details-start">${esc(t('import.details.start'))}</button></div></section>`;
   }
 
+  function savedCoversHtml() {
+    const s = cc;
+    if (s.running) {
+      const pct = s.total ? Math.round((s.done / s.total) * 100) : 0;
+      return `<section class="panel stack" aria-live="polite">
+        <h2 class="t-section">${esc(t('import.saved.title'))}</h2>
+        <div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="${s.total}" aria-valuenow="${s.done}" aria-label="${esc(t('import.saved.title'))}"><span style="width:${pct}%"></span></div>
+        <p class="t-data">${esc(t('import.saved.progress', { done: formatNumber(s.done), total: formatNumber(s.total) }))}</p>
+        <div class="row"><button type="button" class="btn cut-a-8 is-chamfered" data-act="saved-cancel">${esc(t('import.covers.cancel'))}</button></div>
+      </section>`;
+    }
+    if (!s.withCover && !s.saved) return '';
+    const left = Math.max(0, s.withCover - s.saved);
+    const r = s.result;
+    return `<section class="panel stack"><h2 class="t-section">${esc(t('import.saved.title'))}</h2>
+      <p class="t-body measure">${esc(t('import.saved.text', { saved: formatNumber(s.saved), total: formatNumber(s.withCover) }))}</p>
+      ${r ? `<p class="t-body" role="status">${esc(t(r.cancelled ? 'import.saved.result.cancelled' : 'import.saved.result', { saved: formatNumber(r.saved), failed: formatNumber(r.failed) }))}</p>` : ''}
+      ${s.error ? `<p class="field__error" role="alert">${icon('alert')} ${esc(t('err.' + s.error))}</p>` : ''}
+      <div class="row">
+        ${left ? `<button type="button" class="btn cut-a-8 is-chamfered" data-act="saved-start">${esc(t(s.saved ? 'import.saved.more' : 'import.saved.start'))}</button>` : ''}
+        ${s.saved ? `<button type="button" class="btn btn--ghost cut-a-8 is-chamfered" data-act="saved-clear">${esc(t('import.saved.clear'))}</button>` : ''}
+      </div></section>`;
+  }
+
   function doneHtml() {
     const c = doneInfo;
     return `<section class="panel panel--live stack" role="status">
@@ -176,7 +226,7 @@ export function mountImport(root, query) {
         <div class="stats">${stat('new', c.new)}${stat('updated', c.updated)}${stat('merged', c.merged)}</div>
         <div class="row"><a class="btn btn--primary cut-a-8 is-chamfered" href="#/">${esc(t('import.go.library'))}</a>
         <button type="button" class="btn btn--ghost cut-a-8 is-chamfered" data-act="again">${esc(t('import.again'))}</button></div>
-      </section>${coversHtml()}${detailsHtml()}`;
+      </section>${coversHtml()}${detailsHtml()}${savedCoversHtml()}`;
   }
 
   function render(focusSel) {
@@ -282,6 +332,46 @@ export function mountImport(root, query) {
     if (!disposed) render();
   }
 
+  async function countSavedCovers(keepResult = true) {
+    await preloadCovers();
+    const games = await db.getAllGames();
+    const urls = new Set(games.map((g) => g.coverUrl).filter(Boolean));
+    cc.withCover = urls.size;
+    cc.saved = Math.max(0, urls.size - pendingCovers(games).length);
+    if (!keepResult) cc.result = null;
+  }
+
+  async function startSaved() {
+    abortCc = new AbortController();
+    cc = { ...cc, running: true, done: 0, total: 0, result: null, error: null };
+    render('[data-act="saved-cancel"]');
+    try {
+      const games = await db.getAllGames();
+      cc.total = pendingCovers(games).length;
+      render('[data-act="saved-cancel"]');
+      await db.setMeta('coverCache', true); // a partir daqui as capas novas também são guardadas sozinhas
+      cc.result = await queueSaveCovers(games, {
+        signal: abortCc.signal,
+        onProgress: (p) => { cc.done = p.done; cc.total = p.total; if (!disposed) render('[data-act="saved-cancel"]'); },
+      });
+    } catch (e) {
+      cc.error = e?.code || 'idb_unavailable';
+    }
+    cc.running = false; abortCc = null;
+    await countSavedCovers().catch(() => {});
+    if (!disposed) render();
+  }
+
+  async function clearSaved() {
+    try {
+      await clearSavedCovers();
+      await db.setMeta('coverCache', false);
+      cc.result = null; cc.error = null;
+      await countSavedCovers();
+    } catch (e) { cc.error = e?.code || 'idb_unavailable'; }
+    if (!disposed) render();
+  }
+
   async function startCovers() {
     const url = await workerUrl();
     const games = (await db.getAllGames()).filter(needsCover);
@@ -295,19 +385,68 @@ export function mountImport(root, query) {
         sgdbKey: (await db.getMeta('sgdbKey').catch(() => null)) || undefined,
         signal: abort.signal,
         onProgress: (p) => { covers.done = p.done; covers.total = p.total; if (!disposed) render(covers.choice ? null : '[data-act="cover-cancel"]'); },
-        onAmbiguous: (game, items) => new Promise((resolve) => {
-          covers.choice = { game, items, resolve };
-          if (!disposed) render('[data-act="cover-choose"]');
-        }),
+        concurrency: 4,
+        collectAmbiguous: true,
       });
     } catch (e) {
       covers.error = e?.code || 'network';
       covers.result = { updated: [], skipped: 0, notFound: 0, failed: 0, cancelled: true };
     }
     covers.running = false; covers.choice = null; abort = null;
+    const doubts = covers.result?.ambiguous ?? [];
+    if (doubts.length && !covers.result.cancelled) covers.review = { list: doubts, i: 0, items: doubts[0].items.slice(), loading: false, noMore: false, error: null, term: null };
     covers.missing = await countMissingCovers().catch(() => 0);
-    if (!disposed) render();
+    if (!disposed) render(covers.review ? 'h3.state__title' : null);
   }
+
+  /** Passa para o próximo jogo da revisão (ou encerra e mostra o resumo). */
+  async function nextReview() {
+    const r = covers.review;
+    r.i++;
+    if (r.i >= r.list.length) {
+      covers.review = null;
+      covers.missing = await countMissingCovers().catch(() => 0);
+      if (!disposed) render('h1');
+      return;
+    }
+    Object.assign(r, { items: r.list[r.i].items.slice(), loading: false, noMore: false, error: null, term: null });
+    if (!disposed) render('h3.state__title');
+  }
+
+  async function reviewPick(i) {
+    const r = covers.review;
+    const it = r.items[i];
+    if (!it) return;
+    const copy = structuredClone(r.list[r.i].game);
+    Object.assign(copy, { coverUrl: it.coverUrl, coverAppId: it.appid ?? null, coverManual: true, updatedAt: new Date().toISOString() });
+    try { await db.putGame(copy); } catch (e) { r.error = e?.code || 'idb_unavailable'; render(); return; }
+    covers.result.updated.push(copy);
+    await nextReview();
+  }
+
+  async function reviewMore() {
+    const r = covers.review;
+    const game = r.list[r.i].game;
+    r.term = root.querySelector('#rv-term')?.value.trim() || game.title;
+    r.loading = true; r.noMore = false; r.error = null;
+    render('[data-act="review-more"]');
+    try {
+      const more = await searchCoverMore(r.term, await workerUrl(), { exclude: r.items, sgdbKey: (await db.getMeta('sgdbKey').catch(() => null)) || undefined });
+      if (more.length) r.items = [...r.items, ...more]; else r.noMore = true;
+    } catch (e) { r.error = e?.code || 'network'; }
+    r.loading = false;
+    if (!disposed) render('[data-act="review-more"]');
+  }
+
+  function reviewSkip(all) {
+    const r = covers.review;
+    if (all) { covers.result.skipped += r.list.length - r.i; r.i = r.list.length - 1; } else covers.result.skipped++;
+    return nextReview();
+  }
+
+  root.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && e.target.id === 'rv-term') { e.preventDefault(); reviewMore(); }
+  });
 
   root.addEventListener('click', (e) => {
     const b = e.target.closest('[data-act]');
@@ -328,8 +467,15 @@ export function mountImport(root, query) {
     }
     else if (a === 'cover-start') startCovers();
     else if (a === 'details-start') startDetails();
+    else if (a === 'saved-start') startSaved();
+    else if (a === 'saved-cancel') abortCc?.abort();
+    else if (a === 'saved-clear') clearSaved();
     else if (a === 'details-cancel') abortInfo?.abort();
     else if (a === 'cover-cancel') abort?.abort();
+    else if (a === 'review-pick') reviewPick(Number(b.dataset.i));
+    else if (a === 'review-more') reviewMore();
+    else if (a === 'review-skip') reviewSkip(false);
+    else if (a === 'review-skip-all') reviewSkip(true);
     else if (a === 'cover-choose') { const ch = covers.choice; covers.choice = null; ch.resolve(ch.items[Number(b.dataset.i)]); render('[data-act="cover-cancel"]'); }
     else if (a === 'cover-skip') { const ch = covers.choice; covers.choice = null; ch.resolve(null); render('[data-act="cover-cancel"]'); }
   });
@@ -347,9 +493,10 @@ export function mountImport(root, query) {
     lastSync = v || null; steamReady = !!(url && creds);
     if (!disposed && phase === 'idle') render(csvFocus ? '[data-role="file-label"]' : null);
   }).catch(() => {});
+  countSavedCovers().then(() => { if (!disposed && phase === 'idle' && !cc.running) render(); }).catch(() => {});
   countMissingDetails().then((n) => { info.missing = n; if (!disposed && phase === 'idle' && !info.running) render(); }).catch(() => {});
   countMissingCovers().then((n) => { covers.missing = n; if (!disposed && phase === 'idle' && !covers.running) render(); }).catch(() => {});
   const csvFocus = query?.get('csv') === '1';
   render(csvFocus ? '[data-role="file-label"]' : null);
-  return () => { disposed = true; abort?.abort(); abortInfo?.abort(); covers.choice?.resolve(null); };
+  return () => { disposed = true; abort?.abort(); abortInfo?.abort(); abortCc?.abort(); covers.choice?.resolve(null); };
 }

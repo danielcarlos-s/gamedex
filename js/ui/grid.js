@@ -2,6 +2,7 @@ import { t, formatPlaytime, formatDate } from '../i18n/index.js';
 import { icon } from '../icons.js';
 import { STORES } from '../data/model.js';
 import { allStoreIds, customStore } from '../data/stores.js';
+import { localCover } from '../data/cover-cache.js';
 
 /** Escapa texto para HTML/atributos. */
 export function esc(s) {
@@ -40,7 +41,7 @@ export function statusChip(status) {
 
 function coverHtml(game) {
   if (!game.coverUrl) return `<div class="cover-ph">${esc(game.title)}</div>`;
-  return `<img src="${esc(game.coverUrl)}" alt="" data-title="${esc(game.title)}" loading="lazy" decoding="async" ${game.coverAppId ? `data-appid="${esc(game.coverAppId)}"` : ''}>`;
+  return `<img src="${esc(localCover(game.coverUrl))}" alt="" data-title="${esc(game.title)}" loading="lazy" decoding="async" ${game.coverAppId ? `data-appid="${esc(game.coverAppId)}"` : ''}>`;
 }
 
 function cardHtml(g) {

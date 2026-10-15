@@ -26,7 +26,7 @@ const SEARCH_TTL = 7 * 24 * 60 * 60; // 7 dias
 const MAX_TERM = 100;
 const MAX_ITEMS = 10; // o app filtra DLC/pacotes e fica com até 5
 const SGDB_API = 'https://www.steamgriddb.com/api/v2';
-const SGDB_GAMES = 3; // jogos candidatos por busca (1 requisição de capa cada)
+const SGDB_GAMES = 5; // jogos candidatos por busca (1 requisição de capa cada)
 const SGDB_KEY_RE = /^[A-Za-z0-9_-]{16,64}$/;
 const APPID_RE = /^\d{1,9}$/;
 const KEY_RE = /^[0-9A-Fa-f]{32}$/;
@@ -248,7 +248,7 @@ async function sgdbGet(path, key) {
 }
 
 /**
- * /sgdb/search: até 3 jogos do SteamGridDB, cada um com a 1ª capa retrato (600x900 ou 342x482) estática.
+ * /sgdb/search: até 5 jogos do SteamGridDB, cada um com a capa retrato (600x900 ou 342x482) estática mais bem votada.
  * Jogo sem capa retrato fica de fora. Sem chave: 200 com `configured: false` (o app segue só com a Steam).
  * @param {URL} url
  * @param {Request} request
@@ -270,7 +270,9 @@ async function sgdbSearch(url, request, env, headers) {
     sgdbGet(`/grids/game/${g.id}?dimensions=600x900,342x482&types=static&nsfw=false&humor=false`, key).catch(() => [])));
   const items = [];
   for (let i = 0; i < games.length; i++) {
-    const grid = grids[i].find((/** @type {any} */ x) => typeof x?.url === 'string' && x.url.startsWith('https://'));
+    const votes = (/** @type {any} */ x) => (Number(x?.upvotes) || 0) - (Number(x?.downvotes) || 0);
+    const grid = grids[i].filter((/** @type {any} */ x) => typeof x?.url === 'string' && x.url.startsWith('https://'))
+      .sort((/** @type {any} */ a, /** @type {any} */ b) => votes(b) - votes(a))[0]; // sort estável: sem votos, vale a ordem do SteamGridDB
     if (grid) items.push({ sgdbId: games[i].id, name: String(games[i].name ?? ''), coverUrl: grid.url });
   }
   return json({ items, configured: true }, 200, { ...headers, 'Cache-Control': sent ? 'no-store' : `public, max-age=${SEARCH_TTL}` });

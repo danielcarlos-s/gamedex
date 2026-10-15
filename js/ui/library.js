@@ -5,6 +5,7 @@ import { renderGrid, bindCoverFallback, esc, storeLabel } from './grid.js';
 import { allStoreIds, customStore, deleteStore } from '../data/stores.js';
 import { initDisclosure } from '../menu.js';
 import { parseState, stateToHash, runFilters, sortGames, buildPanel } from './filters.js';
+import { preloadCovers, queueSaveCovers, pendingCovers } from '../data/cover-cache.js';
 
 const shell = () => `
   <div class="view-head">
@@ -127,6 +128,7 @@ export function mountLibrary(root, query) {
     body.innerHTML = loadingHtml();
     try {
       games = await db.getAllGames();
+      await preloadCovers();
     } catch (e) {
       if (disposed || mine !== seq) return;
       body.innerHTML = errorHtml(e?.code || 'idb_unavailable');
@@ -138,9 +140,22 @@ export function mountLibrary(root, query) {
     panel?.destroy();
     panel = games.length ? buildPanel(filtersRoot, games, state, onChange, { panelId: 'lib-panel' }) : null;
     paint();
+    autoSaveCovers(games);
   }
 
   const off = db.onChange((ev) => { if (!ev || ev.type === 'games') load(); });
   load();
   return () => { disposed = true; off(); offMenu(); panel?.destroy(); };
+}
+
+let autoRunning = false;
+/** Se o usuário já usou "Salvar capas", guarda sozinho (em silêncio) as capas novas que aparecerem. */
+async function autoSaveCovers(games) {
+  if (autoRunning) return;
+  try {
+    if (!(await db.getMeta('coverCache')) || !pendingCovers(games).length) return;
+    autoRunning = true;
+    await queueSaveCovers(games);
+  } catch { /* sem armazenamento: segue com os endereços remotos */ }
+  autoRunning = false;
 }

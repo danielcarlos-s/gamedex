@@ -373,7 +373,7 @@ test('covers: searchCoverAll junta o SteamGridDB quando a Steam não acha o tít
   const stub = (/** @type {object} */ sgdb) => (/** @type {string} */ u) => u.includes('/sgdb/search') ? jsonRes(sgdb) : jsonRes({ items: [item(7, 'Hades II')] });
   await withFetch(stub({ configured: true, items: [{ name: 'Hades', coverUrl: 'https://cdn2.steamgriddb.com/g.png' }, { name: 'Hades II', coverUrl: 'https://cdn2.steamgriddb.com/dup.png' }] }), async () => {
     const r = await searchCoverAll('Hades', 'https://w.test');
-    assert.deepEqual(r.map((i) => [i.name, i.appid]), [['Hades II', 7], ['Hades', null]], 'sem nome repetido; SGDB sem appid');
+    assert.deepEqual(r.map((i) => [i.name, i.appid]), [['Hades', null], ['Hades II', 7]], 'nome igual do SteamGridDB sobe ao topo; sem nome repetido; SGDB sem appid');
   });
   await withFetch(stub({ items: [], configured: false }), async () => {
     assert.equal((await searchCoverAll('Hades', 'https://w.test')).length, 1);
@@ -382,6 +382,21 @@ test('covers: searchCoverAll junta o SteamGridDB quando a Steam não acha o tít
     await searchCoverAll('Hades II', 'https://w.test');
   });
   assert.equal(calls.length, 1, 'título exato na Steam não consulta o SteamGridDB');
+});
+
+test('covers: SteamGridDB sem resultado tenta de novo com o título-base (sem ™, edição, pontuação)', async () => {
+  const { searchSgdb } = await import('../../js/importers/covers.js');
+  /** @type {string[]} */ const terms = [];
+  const calls = await withFetch((/** @type {string} */ u) => {
+    const term = new URL(u).searchParams.get('term');
+    terms.push(term);
+    return jsonRes({ configured: true, items: term === 'batman arkham city' ? [{ name: 'Batman: Arkham City', coverUrl: 'https://cdn2.steamgriddb.com/b.png' }] : [] });
+  }, async () => {
+    const r = await searchSgdb('Batman™: Arkham City — GOTY Edition', 'https://w.test');
+    assert.equal(r.length, 1);
+  });
+  assert.equal(calls.length, 2);
+  assert.deepEqual(terms, ['Batman™: Arkham City — GOTY Edition', 'batman arkham city']);
 });
 
 test('covers: a chave do SteamGridDB do usuário vai no cabeçalho X-Sgdb-Key', async () => {
@@ -422,4 +437,43 @@ test('details: completa só campos vazios (nunca troca o editado), conquistas s�
   assert.deepEqual([sb.developer, sb.year, sb.genres, sb.achievementsDone], ['Meu Estúdio', 1999, ['Meu'], 5], 'campos editados preservados');
   assert.deepEqual([sc.developer, sc.achievementsTotal], [null, 10], 'sem página na loja: só as conquistas');
   assert.equal(a.developer, null, 'não muta a entrada');
+});
+
+test('covers: com concorrência busca vários jogos ao mesmo tempo e guarda as dúvidas para o fim (collectAmbiguous)', async () => {
+  const mk = (/** @type {string} */ title) => createGame({ title, ownerships: [{ store: 'gog', storeGameId: title }] });
+  const games = ['Alfa', 'Beta', 'Gama', 'Delta', 'Epsilon'].map(mk);
+  let live = 0, peak = 0;
+  const stub = async (/** @type {string} */ u) => {
+    const term = new URL(u).searchParams.get('term');
+    live++; peak = Math.max(peak, live);
+    await new Promise((r) => setTimeout(r, 15));
+    live--;
+    return jsonRes({ items: [item(term === 'Gama' ? 99 : term.length, term === 'Gama' ? 'Gama Deluxe Pack Extra' : term)] });
+  };
+  const saved = [];
+  await withFetch(stub, async () => {
+    const res = await queueCovers(games, { workerUrl: 'https://w.test', delayMs: 0, concurrency: 4, collectAmbiguous: true, save: async (g) => { saved.push(...g); } });
+    assert.ok(peak > 1 && peak <= 4, 'pico de ' + peak);
+    assert.equal(res.updated.length, 4);
+    assert.equal(res.ambiguous.length, 1);
+    assert.equal(res.ambiguous[0].game.title, 'Gama');
+    assert.equal(res.skipped, 0, 'a dúvida não conta como pulada');
+    assert.equal(saved.length, 4);
+  });
+});
+
+test('covers: searchCoverMore não repete o que já foi mostrado e mantém DLC no fim', async () => {
+  const { searchCoverMore, alternateTerms } = await import('../../js/importers/covers.js');
+  assert.deepEqual(alternateTerms('Batman™: Arkham City - GOTY Edition'), ['Batman: Arkham City - GOTY Edition', 'batman arkham city', 'Batman', 'batman']);
+  const shown = [item(1, 'Hades II'), item(2, 'Hades')];
+  await withFetch((/** @type {string} */ u) => u.includes('/sgdb/search')
+    ? jsonRes({ configured: true, items: [{ name: 'Hades', coverUrl: 'https://cdn2.steamgriddb.com/h.png' }] })
+    : jsonRes({ items: [item(1, 'Hades II'), item(2, 'Hades'), item(3, 'Hades Soundtrack'), item(4, 'Hades: Battle Out of Hell')] }), async () => {
+    const r = await searchCoverMore('Hades', 'https://w.test', { exclude: shown });
+    const urls = r.map((i) => i.coverUrl);
+    assert.ok(!urls.includes('https://c.test/1.jpg') && !urls.includes('https://c.test/2.jpg'), 'sem repetir as mostradas');
+    assert.ok(urls.includes('https://c.test/3.jpg') && urls.includes('https://c.test/4.jpg') && urls.includes('https://cdn2.steamgriddb.com/h.png'));
+    assert.ok(r.length <= 5);
+    assert.equal(new Set(urls).size, urls.length);
+  });
 });

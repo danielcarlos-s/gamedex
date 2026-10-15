@@ -15,9 +15,10 @@
  */
 
 const DB_NAME = 'gamedex';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const GAMES = 'games';
 const META = 'meta';
+const COVERS = 'covers'; // capas salvas neste navegador: { url, blob }, chave = url da capa
 
 /** @type {Promise<IDBDatabase>|null} */
 let dbPromise = null;
@@ -25,7 +26,11 @@ let dbPromise = null;
 const listeners = new Set();
 
 /** @returns {{code: string}} */
-const unavailable = () => ({ code: 'idb_unavailable' });
+/** @param {any} [cause] erro original do navegador (vai para o console e para `detail`, para diagnóstico) */
+const unavailable = (cause) => {
+  if (cause) console.error('[gamedex] IndexedDB:', cause?.name || '', cause?.message || cause);
+  return { code: 'idb_unavailable', detail: cause?.name || null };
+};
 
 /**
  * Abre (uma vez) o banco e cria o schema v1: `games` (keyPath `id`, índice `titleKey`) e `meta` (chave externa).
@@ -38,8 +43,8 @@ function openDb() {
     let req;
     try {
       req = indexedDB.open(DB_NAME, DB_VERSION);
-    } catch {
-      return reject(unavailable());
+    } catch (e) {
+      return reject(unavailable(e));
     }
     req.onupgradeneeded = () => {
       const db = req.result;
@@ -47,6 +52,7 @@ function openDb() {
         db.createObjectStore(GAMES, { keyPath: 'id' }).createIndex('titleKey', 'titleKey', { unique: false });
       }
       if (!db.objectStoreNames.contains(META)) db.createObjectStore(META);
+      if (!db.objectStoreNames.contains(COVERS)) db.createObjectStore(COVERS, { keyPath: 'url' });
       req.transaction?.objectStore(META).put(1, 'schemaVersion');
     };
     req.onsuccess = () => {
@@ -54,7 +60,7 @@ function openDb() {
       db.onversionchange = () => { db.close(); dbPromise = null; };
       resolve(db);
     };
-    req.onerror = () => reject(unavailable());
+    req.onerror = () => reject(unavailable(req.error));
     req.onblocked = () => reject(unavailable());
   });
   dbPromise.catch(() => { dbPromise = null; });
@@ -79,12 +85,12 @@ async function run(stores, mode, work) {
       tx = db.transaction(stores, mode);
       const req = work(tx);
       if (req) req.onsuccess = () => { result = req.result; };
-    } catch {
-      return reject(unavailable());
+    } catch (e) {
+      return reject(unavailable(e));
     }
     tx.oncomplete = () => resolve(result);
-    tx.onerror = () => reject(unavailable());
-    tx.onabort = () => reject(unavailable());
+    tx.onerror = () => reject(unavailable(tx.error));
+    tx.onabort = () => reject(unavailable(tx.error));
   });
 }
 
@@ -203,4 +209,34 @@ export async function getMeta(key) {
 export async function setMeta(key, value) {
   await run([META], 'readwrite', (tx) => tx.objectStore(META).put(value, key));
   emit({ type: 'meta', key });
+}
+
+// ---------------------------------------------------------------- capas salvas (ficam fora do backup)
+
+/** @returns {Promise<{url: string, blob: Blob}[]>} */
+export async function getAllCovers() {
+  return (await run([COVERS], 'readonly', (tx) => tx.objectStore(COVERS).getAll())) ?? [];
+}
+
+/**
+ * @param {string} url endereço original da capa (chave)
+ * @param {Blob} blob imagem já reduzida
+ * @returns {Promise<void>}
+ */
+export async function putCover(url, blob) {
+  await run([COVERS], 'readwrite', (tx) => tx.objectStore(COVERS).put({ url, blob }));
+}
+
+/**
+ * @param {string[]} urls
+ * @returns {Promise<void>}
+ */
+export async function deleteCovers(urls) {
+  if (!urls.length) return;
+  await run([COVERS], 'readwrite', (tx) => { const st = tx.objectStore(COVERS); for (const u of urls) st.delete(u); return undefined; });
+}
+
+/** @returns {Promise<void>} */
+export async function clearCovers() {
+  await run([COVERS], 'readwrite', (tx) => tx.objectStore(COVERS).clear());
 }

@@ -6,7 +6,7 @@ import './tests/worker.test.js';
 import './tests/importers.test.js';
 import './tests/filters.test.js';
 
-if (globalThis.indexedDB) { await import('./tests/db.test.js'); await import('./tests/backup.test.js'); }
+if (globalThis.indexedDB) { await import('./tests/db.test.js'); await import('./tests/backup.test.js'); await import('./tests/cover-cache.test.js'); }
 else console.log('(sem indexedDB: testes de db.js e backup.js pulados)');
 
 const results = await runAll();

@@ -179,23 +179,27 @@ test('worker: /sgdb/search sem o secret → 200 configured:false e nenhuma chama
   });
   assert.equal(calls.length, 0);
 });
-test('worker: /sgdb/search com o secret → até 3 jogos com a 1ª capa https; chave só no cabeçalho', async () => {
+test('worker: /sgdb/search com o secret → até 5 jogos com a capa https mais votada; chave só no cabeçalho', async () => {
   const KEY2 = 'SGDBSECRET';
   const seen = [];
   const calls = await withFetch((u) => {
     if (u.includes('/search/autocomplete/')) return jsonRes({ success: true, data: [1, 2, 3, 4].map((id) => ({ id, name: `Jogo ${id}` })) });
     const id = Number(u.match(/\/grids\/game\/(\d+)/)[1]);
-    return id === 2 ? jsonRes({ data: [] }) : jsonRes({ data: [{ url: `https://cdn2.steamgriddb.com/grid/${id}.png` }] });
+    if (id === 2) return jsonRes({ data: [] });
+    return jsonRes({ data: id === 3
+      ? [{ url: 'https://cdn2.steamgriddb.com/grid/3a.png', upvotes: 1, downvotes: 0 }, { url: 'https://cdn2.steamgriddb.com/grid/3b.png', upvotes: 9, downvotes: 1 }]
+      : [{ url: `https://cdn2.steamgriddb.com/grid/${id}.png` }] });
   }, async () => {
     const r = await handle(req('/sgdb/search?term=' + encodeURIComponent('Jogo X')), { ...env, STEAMGRIDDB_KEY: KEY2 });
     assert.equal(r.status, 200);
     const b = await r.json();
     assert.equal(b.configured, true);
-    assert.deepEqual(b.items.map((i) => i.sgdbId), [1, 3]);
+    assert.deepEqual(b.items.map((i) => i.sgdbId), [1, 3, 4]);
     assert.equal(b.items[0].coverUrl, 'https://cdn2.steamgriddb.com/grid/1.png');
+    assert.equal(b.items[1].coverUrl, 'https://cdn2.steamgriddb.com/grid/3b.png', 'a mais votada vence');
     seen.push(JSON.stringify(b));
   });
-  assert.equal(calls.length, 4, '1 busca + 3 grids');
+  assert.equal(calls.length, 5, '1 busca + 4 grids');
   assert.ok(calls.every((u) => !u.includes(KEY2)) && !seen[0].includes(KEY2));
 });
 
